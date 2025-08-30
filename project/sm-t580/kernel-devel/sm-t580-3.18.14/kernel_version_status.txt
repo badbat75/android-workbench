@@ -1,0 +1,10 @@
+qemu_ranchu_0_1_defconfig: Minimal kernel matching minimal exynos configs - No boot and console output.
+qemu_ranchu_0_2_defconfig: Added serial management and CMD line configuration - Console restored. First successful bootstrap, no final boot yet.
+exynos7870-gtaxlwifi_qemu_0_1_defconfig: Full exynos config + QEMU/VIRTIO support - QEMU boot attempt with full hardware support, no boot and console output.
+exynos7870-gtaxlwifi_qemu_0_2_defconfig: Removed ARCH_EXYNOS - no boot and console output.
+exynos7870-gtaxlwifi_qemu_0_3_defconfig: Systematic Samsung hardware driver removal + compilation fixes - Kernel builds successfully - no boot and console output.
+exynos7870-gtaxlwifi_qemu_0_4_defconfig: Disabled TIMA Trust Zone security features - Successful boot with console output after removing Samsung hardware security.
+exynos7870-gtaxlwifi_qemu_0_5_defconfig: Re-enabled maximum hardware support while maintaining QEMU boot - Systematic hardware driver re-enablement with compilation fixes, SOC_EXYNOS7870 enabled but compilation issues.
+exynos7870-gtaxlwifi_qemu_0_6_defconfig: Fixed Samsung SoC compilation dependencies - Disabled SOC_EXYNOS7870, PWRCAL, PM_RUNTIME, EXYNOS_CHIPID, SAMSUNG_DMADEV, and PL330_DMA to resolve undefined references.
+exynos7870-gtaxlwifi_qemu_0_7_defconfig: Final configuration with all the device but TIMA - Not booting
+exynos7870-gtaxlwifi_qemu_0_7_defconfig: Final configuration with all the device but TIMA and SOC_EXYNOS7870 with a huge amount of stubs in kernel - Booting with issues on Android

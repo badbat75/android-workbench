@@ -1,0 +1,70 @@
+# QEMU-specific service overrides to reduce binder transaction errors
+# Disable hardware-dependent services that cause transaction failures
+
+# Disable audio services (no audio hardware in QEMU)
+service audioserver /system/bin/true
+    class main
+    disabled
+
+# Disable camera services (no camera hardware in QEMU)  
+service cameraserver /system/bin/true
+    class main
+    disabled
+
+# Disable DRM services (no DRM hardware in QEMU)
+service drmserver /system/bin/true
+    class main 
+    disabled
+
+service mediadrmserver /system/bin/true
+    class main
+    disabled
+
+# Disable gatekeeper (hardware security)
+service gatekeeperd /system/bin/true
+    class late_start
+    disabled
+
+# Disable media services that depend on hardware codecs
+service mediametrics /system/bin/true
+    class main
+    disabled
+
+service mediaextractor /system/bin/true
+    class main
+    disabled
+
+# Disable WiFi-related services (no WiFi hardware in QEMU)
+service wificond /system/bin/true
+    class main
+    disabled
+
+# Disable professional audio services
+service apaservice /system/bin/true
+    class main
+    disabled
+
+service jackservice /system/bin/true
+    class main
+    disabled
+
+# Disable remote display (depends on hardware)
+service remotedisplay /system/bin/true
+    class main
+    disabled
+
+# Keep essential services but make them lightweight
+service mediaserver /system/bin/mediaserver
+    class main
+    user media
+    group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm system
+    ioprio rt 4
+
+service installd /system/bin/installd
+    class main
+    socket installd stream 600 system system
+
+service storaged /system/bin/storaged
+    class main
+    user root
+    group package_info

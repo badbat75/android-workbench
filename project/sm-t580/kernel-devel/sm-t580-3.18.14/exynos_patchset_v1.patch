@@ -1,0 +1,69 @@
+--- original-sm-t580-3.18.14/drivers/usb/host/ehci.h
++++ sm-t580-3.18.14/drivers/usb/host/ehci.h
+@@ -843,6 +843,8 @@ static inline u32 hc32_to_cpup (const struct ehci_hcd *ehci, const __hc32 *x)
+ 
+ #define ehci_dbg(ehci, fmt, args...) \
+ 	dev_dbg(ehci_to_hcd(ehci)->self.controller , fmt , ## args)
++#define ehci_vdbg(ehci, fmt, args...) \
++	dev_vdbg(ehci_to_hcd(ehci)->self.controller , fmt , ## args)
+ #define ehci_err(ehci, fmt, args...) \
+ 	dev_err(ehci_to_hcd(ehci)->self.controller , fmt , ## args)
+ #define ehci_info(ehci, fmt, args...) \
+--- original-sm-t580-3.18.14/drivers/thermal/cpu_cooling.c	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/thermal/cpu_cooling.c	2025-08-29 17:52:15.902338234 +0200
+@@ -28,30 +28,6 @@
+ #include <linux/cpu.h>
+ #include <linux/cpu_cooling.h>
+ 
+-/**
+- * struct cpufreq_cooling_device - data for cooling device with cpufreq
+- * @id: unique integer value corresponding to each cpufreq_cooling_device
+- *	registered.
+- * @cool_dev: thermal_cooling_device pointer to keep track of the
+- *	registered cooling device.
+- * @cpufreq_state: integer value representing the current state of cpufreq
+- *	cooling	devices.
+- * @cpufreq_val: integer value representing the absolute value of the clipped
+- *	frequency.
+- * @allowed_cpus: all the cpus involved for this cpufreq_cooling_device.
+- *
+- * This structure is required for keeping information of each
+- * cpufreq_cooling_device registered. In order to prevent corruption of this a
+- * mutex lock cooling_cpufreq_lock is used.
+- */
+-struct cpufreq_cooling_device {
+-	int id;
+-	struct thermal_cooling_device *cool_dev;
+-	unsigned int cpufreq_state;
+-	unsigned int cpufreq_val;
+-	struct cpumask allowed_cpus;
+-	struct list_head node;
+-};
+ static DEFINE_IDR(cpufreq_idr);
+ static DEFINE_MUTEX(cooling_cpufreq_lock);
+ 
+--- original-sm-t580-3.18.14/drivers/md/dm-crypt.c	2018-10-29 07:24:37.000000000 +0100
++++ sm-t580-3.18.14/drivers/md/dm-crypt.c	2025-08-28 14:44:35.348928346 +0200
+@@ -1155,10 +1155,12 @@
+ 	crypt_inc_pending(io);
+ 
+ 	clone_init(io, clone);
++#if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_DM_CRYPT)
+ 	clone->private_enc_mode = FMP_DISK_ENC_MODE;
+ 	clone->private_algo_mode = FMP_XTS_ALGO_MODE;
+ 	clone->key = cc->key;
+ 	clone->key_length = cc->key_size;
++#endif
+ 	clone->bi_iter.bi_sector = cc->start + io->sector;
+ 
+ 	generic_make_request(clone);
+--- original-sm-t580-3.18.14/drivers/thermal/samsung/exynos_tmu.c	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/thermal/samsung/exynos_tmu.c	2025-08-29 18:31:05.089874836 +0200
+@@ -28,6 +28,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/ipa.h>
+ #include <linux/module.h>
++#include <linux/slab.h>
+ #include <linux/of.h>
+ #include <linux/of_address.h>
+ #include <linux/of_irq.h>

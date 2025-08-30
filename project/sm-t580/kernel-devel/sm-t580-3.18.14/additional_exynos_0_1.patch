@@ -1,0 +1,1177 @@
+--- kernel/original-sm-t580-3.18.14/drivers/media/platform/exynos/fimc-is2/sensor/module_framework/fimc-is-control-sensor.h	2018-10-29 07:24:38.000000000 +0100
++++ kernel/sm-t580-3.18.14/drivers/media/platform/exynos/fimc-is2/sensor/module_framework/fimc-is-control-sensor.h	2025-08-29 19:16:46.929741232 +0200
+@@ -12,6 +12,7 @@
+ #define FIMC_IS_CONTROL_SENSOR_H
+ 
+ #include <linux/workqueue.h>
++#include "fimc-is-interface-sensor.h"
+ 
+ #define CAM2P0_UCTL_LIST_SIZE   10
+ #define EXPECT_DM_NUM		10
+@@ -38,6 +39,6 @@
+ 				u32 tgt_max_pos, u32 tgt_direction);
+ int fimc_is_actuator_ctl_search_position(u32 position,
+ 				u32 *position_table,
+-				u32 direction,
++				enum fimc_is_actuator_direction direction,
+ 				u32 *searched_pos);
+ #endif
+--- original-sm-t580-3.18.14/include/linux/serial_s3c.h	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/include/linux/serial_s3c.h	2025-08-29 20:02:08.122077015 +0200
+@@ -244,6 +244,11 @@
+ */
+ 
+ typedef void (*s3c_wake_peer_t)(struct uart_port *port);
++
++#ifndef CONFIG_SERIAL_SAMSUNG_UARTS
++#define CONFIG_SERIAL_SAMSUNG_UARTS 4
++#endif
++
+ extern s3c_wake_peer_t s3c2410_serial_wake_peer[CONFIG_SERIAL_SAMSUNG_UARTS];
+ 
+ struct s3c2410_uartcfg {
+--- original-sm-t580-3.18.14/sound/soc/codecs/exynos-audmixer-v2.c	2018-10-29 07:24:41.000000000 +0100
++++ sm-t580-3.18.14/sound/soc/codecs/exynos-audmixer-v2.c	2025-08-29 20:14:04.837392035 +0200
+@@ -531,17 +531,19 @@
+  */
+ static void audmixer_cfg_gpio(struct device *dev, const char *name)
+ {
++#ifdef CONFIG_PINCTRL
+ 	struct pinctrl_state *pin_state;
+ 	int ret;
+ 
+ 	pin_state = pinctrl_lookup_state(g_audmixer->pinctrl, name);
+-	if (IS_ERR(pin_state)) {
++	if (IS_ERR_OR_NULL(pin_state)) {
+ 		dev_err(dev, "Couldn't find pinctrl %s\n", name);
+ 	} else {
+ 		ret = pinctrl_select_state(g_audmixer->pinctrl, pin_state);
+ 		if (ret < 0)
+ 			dev_err(dev, "Unable to configure pinctrl %s\n", name);
+ 	}
++#endif
+ }
+ #ifdef CONFIG_PM_RUNTIME
+ 
+@@ -2399,12 +2401,16 @@
+ 	}
+ 
+ 	/* Get pin-control handle */
++#ifdef CONFIG_PINCTRL
+ 	g_audmixer->pinctrl = devm_pinctrl_get(codec->dev);
+-	if (IS_ERR(g_audmixer->pinctrl)) {
++	if (IS_ERR_OR_NULL(g_audmixer->pinctrl)) {
+ 		dev_err(codec->dev, "Couldn't get pins (%li)\n",
+ 				PTR_ERR(g_audmixer->pinctrl));
+ 		return PTR_ERR(g_audmixer->pinctrl);
+ 	}
++#else
++	g_audmixer->pinctrl = NULL;
++#endif
+ 
+ 	/* Get Clock for Mixer */
+ 	ret = audmixer_get_clk(codec->dev);
+--- original-sm-t580-3.18.14/sound/soc/samsung/i2s.c	2018-10-29 07:24:41.000000000 +0100
++++ sm-t580-3.18.14/sound/soc/samsung/i2s.c	2025-08-29 20:22:07.326386248 +0200
+@@ -1333,16 +1333,19 @@
+ {
+ 	struct platform_device *pdev;
+ 	struct s3c_audio_pdata *i2s_pdata;
+-	struct pinctrl_state *pin_state;
+ 
+ 	pdev = is_secondary(i2s) ? i2s->pri_dai->pdev : i2s->pdev;
+ 
+ 	if (pdev->dev.of_node) {
++#ifdef CONFIG_PINCTRL
++		struct pinctrl_state *pin_state;
++		
+ 		pin_state = pinctrl_lookup_state(i2s->pinctrl, name);
+-		if (IS_ERR(pin_state))
++		if (IS_ERR_OR_NULL(pin_state))
+ 			goto err;
+ 		if (pinctrl_select_state(i2s->pinctrl, pin_state) < 0)
+ 			goto err;
++#endif
+ 	} else {
+ 		i2s_pdata = pdev->dev.platform_data;
+ 		if (i2s_pdata->cfg_gpio && i2s_pdata->cfg_gpio(pdev))
+@@ -1997,8 +2000,9 @@
+ 			goto err;
+ 		}
+ 	} else {
++#ifdef CONFIG_PINCTRL
+ 		pinctrl = devm_pinctrl_get(&pdev->dev);
+-		if (IS_ERR(pinctrl)) {
++		if (IS_ERR_OR_NULL(pinctrl)) {
+ 			dev_warn(&pdev->dev, "did not get pins for i2s: %li\n",
+ 				PTR_ERR(pinctrl));
+ 		} else {
+@@ -2010,6 +2014,15 @@
+ #endif
+ 			}
+ 		}
++#else
++		pri_dai->pinctrl = NULL;
++		if (quirks & QUIRK_SEC_DAI) {
++			sec_dai->pinctrl = NULL;
++#ifdef CONFIG_SND_SAMSUNG_COMPR
++			compr_dai->pinctrl = NULL;
++#endif
++		}
++#endif
+ 	}
+ 	i2s_cfg_gpio(pri_dai, "idle");
+ 
+--- original-sm-t580-3.18.14/drivers/leds/sm5703_fled.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/leds/sm5703_fled.c	2025-08-29 20:23:02.026010694 +0200
+@@ -988,12 +988,16 @@
+ 	/* Create Samsung Flash Sysfs */
+ 	create_flash_sysfs();
+ 
++#ifdef CONFIG_PINCTRL
+ 	pdata->fled_pinctrl = devm_pinctrl_get(&pdev->dev);
+ 	if (IS_ERR_OR_NULL(pdata->fled_pinctrl)) {
+ 		pr_err("%s:%d Getting pinctrl handle failed\n",
+ 				__func__, __LINE__);
+ 		return -EINVAL;
+ 	}
++#else
++	pdata->fled_pinctrl = NULL;
++#endif
+ 
+ 	SM5703_FLED_INFO("End : X\n");
+ 
+--- original-sm-t580-3.18.14/sound/soc/samsung/i2s.c	2018-10-29 07:24:41.000000000 +0100
++++ sm-t580-3.18.14/sound/soc/samsung/i2s.c	2025-08-29 20:24:19.154301214 +0200
+@@ -1333,16 +1333,19 @@
+ {
+ 	struct platform_device *pdev;
+ 	struct s3c_audio_pdata *i2s_pdata;
+-	struct pinctrl_state *pin_state;
+ 
+ 	pdev = is_secondary(i2s) ? i2s->pri_dai->pdev : i2s->pdev;
+ 
+ 	if (pdev->dev.of_node) {
++#ifdef CONFIG_PINCTRL
++		struct pinctrl_state *pin_state;
++		
+ 		pin_state = pinctrl_lookup_state(i2s->pinctrl, name);
+-		if (IS_ERR(pin_state))
++		if (IS_ERR_OR_NULL(pin_state))
+ 			goto err;
+ 		if (pinctrl_select_state(i2s->pinctrl, pin_state) < 0)
+ 			goto err;
++#endif
+ 	} else {
+ 		i2s_pdata = pdev->dev.platform_data;
+ 		if (i2s_pdata->cfg_gpio && i2s_pdata->cfg_gpio(pdev))
+@@ -1751,7 +1754,9 @@
+ 	u32 idma_addr;
+ #endif
+ 	struct device_node *np = pdev->dev.of_node;
++#ifdef CONFIG_PINCTRL
+ 	struct pinctrl *pinctrl;
++#endif
+ 	enum samsung_dai_type samsung_dai_type;
+ 	int ret = 0;
+ 
+@@ -1997,8 +2002,9 @@
+ 			goto err;
+ 		}
+ 	} else {
++#ifdef CONFIG_PINCTRL
+ 		pinctrl = devm_pinctrl_get(&pdev->dev);
+-		if (IS_ERR(pinctrl)) {
++		if (IS_ERR_OR_NULL(pinctrl)) {
+ 			dev_warn(&pdev->dev, "did not get pins for i2s: %li\n",
+ 				PTR_ERR(pinctrl));
+ 		} else {
+@@ -2010,6 +2016,15 @@
+ #endif
+ 			}
+ 		}
++#else
++		pri_dai->pinctrl = NULL;
++		if (quirks & QUIRK_SEC_DAI) {
++			sec_dai->pinctrl = NULL;
++#ifdef CONFIG_SND_SAMSUNG_COMPR
++			compr_dai->pinctrl = NULL;
++#endif
++		}
++#endif
+ 	}
+ 	i2s_cfg_gpio(pri_dai, "idle");
+ 
+--- original-sm-t580-3.18.14/drivers/input/touchscreen/stm/fts7/fts_ts.c	2018-10-29 07:24:37.000000000 +0100
++++ sm-t580-3.18.14/drivers/input/touchscreen/stm/fts7/fts_ts.c	2025-08-29 20:25:17.289027674 +0200
+@@ -2187,19 +2187,25 @@
+ 			return -EINVAL;
+ 	}
+ 
++#ifdef CONFIG_PINCTRL
+ 	pdata->pinctrl = devm_pinctrl_get(&client->dev);
+-	if (IS_ERR(pdata->pinctrl)) {
++	if (IS_ERR_OR_NULL(pdata->pinctrl)) {
+ 		tsp_debug_err(true, &client->dev, "could not get pinctrl\n");
+ 		return PTR_ERR(pdata->pinctrl);
+ 	}
+ 
+ 	pdata->pins_default = pinctrl_lookup_state(pdata->pinctrl, "on_state");
+-	if (IS_ERR(pdata->pins_default))
++	if (IS_ERR_OR_NULL(pdata->pins_default))
+ 		tsp_debug_err(true, &client->dev, "could not get default pinstate\n");
+ 
+ 	pdata->pins_sleep = pinctrl_lookup_state(pdata->pinctrl, "off_state");
+-	if (IS_ERR(pdata->pins_sleep))
++	if (IS_ERR_OR_NULL(pdata->pins_sleep))
+ 		tsp_debug_err(true, &client->dev, "could not get sleep pinstate\n");
++#else
++	pdata->pinctrl = NULL;
++	pdata->pins_default = NULL;
++	pdata->pins_sleep = NULL;
++#endif
+ 
+ 	info = kzalloc(sizeof(struct fts_ts_info), GFP_KERNEL);
+ 	if (!info) {
+--- original-sm-t580-3.18.14/drivers/misc/gnss_if/gnss_keplerctl_device.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/misc/gnss_if/gnss_keplerctl_device.c	2025-08-29 20:26:53.872895969 +0200
+@@ -309,12 +309,21 @@
+ 
+ static void gnss_get_pmu_ops(struct gnss_ctl *gc)
+ {
++#ifdef CONFIG_SOC_EXYNOS7870
+ 	gc->pmu_ops.hold_reset = gnss_pmu_hold_reset;
+ 	gc->pmu_ops.release_reset = gnss_pmu_release_reset;
+ 	gc->pmu_ops.power_on = gnss_pmu_power_on;
+ 	gc->pmu_ops.clear_int = gnss_pmu_clear_interrupt;
+ 	gc->pmu_ops.init_conf = gnss_pmu_init_conf;
+ 	gc->pmu_ops.change_tcxo_mode = gnss_change_tcxo_mode;
++#else
++	gc->pmu_ops.hold_reset = NULL;
++	gc->pmu_ops.release_reset = NULL;
++	gc->pmu_ops.power_on = NULL;
++	gc->pmu_ops.clear_int = NULL;
++	gc->pmu_ops.init_conf = NULL;
++	gc->pmu_ops.change_tcxo_mode = NULL;
++#endif
+ 
+ }
+ 
+@@ -388,13 +397,18 @@
+ 	mbox_request_irq(MCU_GNSS, mbox->irq_gnss2ap_rsp_fault_info,
+ 			 mbox_kepler_rsp_fault_info, (void *)gc);
+ 
++#ifdef CONFIG_PINCTRL
+ 	gc->gnss_gpio = devm_pinctrl_get(&pdev->dev);
+-	if (IS_ERR(gc->gnss_gpio)) {
++	if (IS_ERR_OR_NULL(gc->gnss_gpio)) {
+ 		gif_err("Can't get gpio for GNSS sensor.\n");
+ 	} else {
+ 		gc->gnss_sensor_gpio = pinctrl_lookup_state(gc->gnss_gpio,
+ 				"gnss_sensor");
+ 	}
++#else
++	gc->gnss_gpio = NULL;
++	gc->gnss_sensor_gpio = NULL;
++#endif
+ 
+ 	gc->vdd_sensor_reg = devm_regulator_get(gc->dev, "vdd_sensor_2p85");
+ 	if (IS_ERR(gc->vdd_sensor_reg)) {
+--- original-sm-t580-3.18.14/drivers/mmc/host/dw_mmc.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/mmc/host/dw_mmc.c	2025-08-29 20:28:10.958185213 +0200
+@@ -52,6 +52,10 @@
+ #include "dw_mmc-exynos.h"
+ #include "../card/queue.h"
+ 
++#ifndef EMMC0_FMP
++#define EMMC0_FMP			(0x13541000)
++#endif
++
+ /* Common flag combinations */
+ #define DW_MCI_DATA_ERROR_FLAGS	(SDMMC_INT_DRTO | SDMMC_INT_DCRC | \
+ 				 SDMMC_INT_HTO | SDMMC_INT_SBE  | \
+--- original-sm-t580-3.18.14/drivers/misc/gnss_if/pmu-gnss.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/misc/gnss_if/pmu-gnss.c	2025-08-29 20:29:11.481982628 +0200
+@@ -9,6 +9,8 @@
+ #include <linux/smc.h>
+ #include "pmu-gnss.h"
+ 
++#ifdef CONFIG_SOC_EXYNOS7870
++
+ static void __init set_shdmem_size(struct gnss_ctl *gc, u32 memsz)
+ {
+ 	u32 tmp;
+@@ -299,3 +301,5 @@
+ 	return 0;
+ }
+ 
++#endif /* CONFIG_SOC_EXYNOS7870 */
++
+--- original-sm-t580-3.18.14/drivers/misc/modem_v1/link_device_ect.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/misc/modem_v1/link_device_ect.c	2025-08-29 20:29:56.226311423 +0200
+@@ -138,7 +138,7 @@
+ }
+ 
+ int exynos_devfreq_parse_ect(struct ect_table_data *table_data)
+-
++{
+ 	struct freq_table *ect_table = table_data->ect_table;
+ 	mif_err("ECT is not defined\n");
+ 
+--- original-sm-t580-3.18.14/drivers/misc/uart_sel/uart_sel.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/misc/uart_sel/uart_sel.c	2025-08-29 20:31:26.360988201 +0200
+@@ -100,6 +100,7 @@
+ 
+ static int set_uart_sel(void)
+ {
++#ifdef CONFIG_SOC_EXYNOS7870
+ 	int ret;
+ 
+ 	if (switch_data->uart_switch_sel == CP) {
+@@ -116,6 +117,7 @@
+ 			pr_err("%s: ERR! write Fail: %d\n", __func__, ret);
+ 	}
+ 	uart_dir_work();
++#endif
+ 
+ 	return 0;
+ }
+@@ -137,9 +139,11 @@
+ static ssize_t
+ uart_sel_show(struct device *dev, struct device_attribute *attr, char *buf)
+ {
+-	u32 uart_ctrl;
+ 	ssize_t ret = 0;
+ 
++#ifdef CONFIG_SOC_EXYNOS7870
++	u32 uart_ctrl;
++
+ 	if (ret < PAGE_SIZE - 1) {
+ 		exynos_pmu_read(EXYNOS_PMU_UART_IO_SHARE_CTRL, &uart_ctrl);
+ 		ret += snprintf(buf + ret, PAGE_SIZE - ret, (uart_ctrl & SEL_CP_UART_DBG) ?
+@@ -149,6 +153,9 @@
+ 		buf[PAGE_SIZE-1] = '\0';
+ 		ret = PAGE_SIZE-1;
+ 	}
++#else
++	ret += snprintf(buf + ret, PAGE_SIZE - ret, "AP\n");
++#endif
+ 
+ 	return ret;
+ }
+--- original-sm-t580-3.18.14/drivers/mmc/host/dw_mmc-exynos.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/mmc/host/dw_mmc-exynos.c	2025-08-29 20:34:40.310748033 +0200
+@@ -27,6 +27,14 @@
+ #include "dw_mmc-pltfm.h"
+ #include "dw_mmc-exynos.h"
+ 
++#ifndef EMMC0_FMP
++#define EMMC0_FMP			(0x13541000)
++#endif
++
++#ifndef EMMC2_FMP
++#define EMMC2_FMP			(0x13561000)
++#endif
++
+ static void dw_mci_exynos_register_dump(struct dw_mci *host)
+ {
+ 	dev_err(host->dev, ": EMMCP_BASE:	0x%08x\n",
+@@ -611,9 +619,10 @@
+ 	/* Swapping clock drive strength */
+ 	of_property_read_u32(np, "clk-drive-number", &priv->clk_drive_number);
+ 
++#ifdef CONFIG_PINCTRL
+ 	priv->pinctrl = devm_pinctrl_get(host->dev);
+ 
+-	if (IS_ERR(priv->pinctrl)) {
++	if (IS_ERR_OR_NULL(priv->pinctrl)) {
+ 		priv->pinctrl = NULL;
+ 	} else {
+ 		priv->clk_drive_base = pinctrl_lookup_state(priv->pinctrl, "default");
+@@ -623,11 +632,21 @@
+ 		priv->clk_drive_str[3] = pinctrl_lookup_state(priv->pinctrl, "fast-slew-rate-4x");
+ 		priv->clk_drive_str[4] = pinctrl_lookup_state(priv->pinctrl, "fast-slew-rate-5x");
+ 		priv->clk_drive_str[5] = pinctrl_lookup_state(priv->pinctrl, "fast-slew-rate-6x");
++	}
++#else
++	priv->pinctrl = NULL;
++	priv->clk_drive_base = NULL;
++	priv->clk_drive_str[0] = NULL;
++	priv->clk_drive_str[1] = NULL;
++	priv->clk_drive_str[2] = NULL;
++	priv->clk_drive_str[3] = NULL;
++	priv->clk_drive_str[4] = NULL;
++	priv->clk_drive_str[5] = NULL;
++#endif
+ 
+-		for (i = 0; i < 6; i++) {
+-			if (IS_ERR(priv->clk_drive_str[i]))
+-				priv->clk_drive_str[i] = NULL;
+-		}
++	for (i = 0; i < 6; i++) {
++		if (IS_ERR(priv->clk_drive_str[i]))
++			priv->clk_drive_str[i] = NULL;
+ 	}
+ 
+ 	of_property_read_u32(np, "samsung,dw-mshc-ciu-div", &div);
+--- original-sm-t580-3.18.14/include/linux/exynos_iovmm.h	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/include/linux/exynos_iovmm.h	2025-08-29 20:36:47.449523745 +0200
+@@ -166,6 +166,7 @@
+ static inline dma_addr_t exynos_iovmm_map_userptr(struct device *dev,
+ 			unsigned long vaddr, size_t size, int prot)
+ {
++	return 0;
+ }
+ #define exynos_iovmm_unmap_userptr(dev, iova) do { } while (0)
+ 
+--- original-sm-t580-3.18.14/drivers/misc/modem_v1/link_device_ect.c	2018-10-29 07:24:38.000000000 +0100
++++ sm-t580-3.18.14/drivers/misc/modem_v1/link_device_ect.c	2025-08-29 20:37:31.817841374 +0200
+@@ -19,6 +19,7 @@
+ #include "modem_prj.h"
+ #include "link_device_ect.h"
+ 
++#ifdef CONFIG_ECT
+ static unsigned long found_table_mask;
+ 
+ static struct {
+@@ -31,6 +32,7 @@
+ 	[MIF_TABLE] = { "dvfs_mif",	"MIF", },
+ 	[INT_TABLE] = { "dvfs_int",	"INT", },
+ };
++#endif
+ 
+ #if defined(CONFIG_ECT)
+ inline int get_total_table_count(struct ect_table_data *table_data)
+@@ -138,15 +140,18 @@
+ }
+ 
+ int exynos_devfreq_parse_ect(struct ect_table_data *table_data)
+-
++{
++#ifdef CONFIG_ECT
+ 	struct freq_table *ect_table = table_data->ect_table;
+-	mif_err("ECT is not defined\n");
+-
++	
+ 	INIT_LIST_HEAD(&table_data->table_list);
+ 	ect_table[CL0_TABLE].num_of_table = 0;
+ 	ect_table[CL1_TABLE].num_of_table = 0;
+ 	ect_table[MIF_TABLE].num_of_table = 0;
+ 	ect_table[INT_TABLE].num_of_table = 0;
++#else
++	mif_err("ECT is not defined\n");
++#endif
+ 
+ 	return 0;
+ }
+--- original-sm-t580-3.18.14/drivers/soc/samsung/pm_domains/pm_domains_sysfs.c	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/soc/samsung/pm_domains/pm_domains_sysfs.c	2025-08-29 20:38:48.854185344 +0200
+@@ -281,11 +281,13 @@
+ {
+ 	struct class *runtime_pm_class;
+ 	struct device *runtime_pm_dev;
+-	int ret, i;
++	int ret;
+ 
+ 	runtime_pm_class = class_create(THIS_MODULE, "runtime_pm");
+ #if defined(CONFIG_SOC_EXYNOS5433) || defined(CONFIG_SOC_EXYNOS7420) || defined(CONFIG_SOC_EXYNOS7580) || defined(CONFIG_SOC_EXYNOS8890) || defined(CONFIG_SOC_EXYNOS7870)
+-	for (i = 0; i < ARRAY_SIZE(pd_name); i++) {
++	{
++		int i;
++		for (i = 0; i < ARRAY_SIZE(pd_name); i++) {
+ 		runtime_pm_dev = device_create(runtime_pm_class, NULL, 0, NULL, pd_name[i]);
+ 		ret = sysfs_create_group(&runtime_pm_dev->kobj, &control_device_attr_group);
+ 		if (ret) {
+@@ -293,6 +295,7 @@
+ 			return -EINVAL;
+ 		}
+ 	}
++	}
+ #else
+ 	runtime_pm_dev = device_create(runtime_pm_class, NULL, 0, NULL, "test");
+ 	ret = sysfs_create_group(&runtime_pm_dev->kobj, &control_device_attr_group);
+--- original-sm-t580-3.18.14/drivers/staging/android/ion/ion.c	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/staging/android/ion/ion.c	2025-08-29 20:39:48.399020923 +0200
+@@ -1108,7 +1108,12 @@
+ 		sizes_pss[id] += (buffer->size / buffer->handle_count);
+ 		seq_printf(s, "%16.s %4u %16.s %4u %10zu %8d %9lx\n",
+ 			   buffer->task_comm, buffer->pid,
+-				buffer->thread_comm, buffer->tid, buffer->size,
++#ifdef ION_DEBUG_THREAD_INFO
++				buffer->thread_comm, buffer->tid,
++#else
++				"", 0,
++#endif
++				buffer->size,
+ 				buffer->handle_count, buffer->flags);
+ 	}
+ 	mutex_unlock(&client->lock);
+--- /home/emiliano/git/android-workbench/kernel/original-sm-t580-3.18.14/include/linux/exynos_ion.h	2018-10-29 07:24:40.000000000 +0100
++++ /home/emiliano/git/android-workbench/kernel/sm-t580-3.18.14/include/linux/exynos_ion.h	2025-08-29 20:41:38.569417136 +0200
+@@ -178,9 +178,15 @@
+ #define exynos_ion_sync_vaddr_for_cpu(dev, vaddr, size, offset, dir) \
+ 							do { } while (0)
+ #define exynos_ion_sync_sg_for_cpu(dev, size, sgt, dir) do { } while (0)
+-#define ion_secure_protect(buffer) do { } while (0)
+-#define ion_secure_unprotect(buffer) do { } while (0)
+-#define ion_is_heap_available(heap, flags, data) (1)
++#ifdef CONFIG_ION_EXYNOS
++#define ion_secure_protect(buffer) exynos_ion_secure_protect(buffer)
++#define ion_secure_unprotect(buffer) exynos_ion_secure_unprotect(buffer)
++#define ion_is_heap_available(heap, flags, data) exynos_ion_is_heap_available(heap, flags, data)
++#else
++#define ion_secure_protect(buffer) ({ (void)(buffer); 0; })
++#define ion_secure_unprotect(buffer) do { (void)(buffer); } while (0)
++#define ion_is_heap_available(heap, flags, data) ({ (void)(heap); (void)(flags); (void)(data); 1; })
++#endif
+ 
+ static inline int ion_exynos_contig_region_mask(char *region_name)
+ {
+--- /home/emiliano/git/android-workbench/kernel/original-sm-t580-3.18.14/drivers/usb/dwc3/otg.c	2018-10-29 07:24:39.000000000 +0100
++++ /home/emiliano/git/android-workbench/kernel/sm-t580-3.18.14/drivers/usb/dwc3/otg.c	2025-08-29 20:42:44.827929684 +0200
+@@ -55,8 +55,9 @@
+ 	return ops;
+ }
+ #else
+-static struct dwc3_ext_otg_ops *dwc3_otg_exynos_rsw_probe(dwc)
++static struct dwc3_ext_otg_ops *dwc3_otg_exynos_rsw_probe(struct dwc3 *dwc)
+ {
++	(void)dwc;
+ 	return NULL;
+ }
+ #endif
+--- a/include/linux/exynos-ss.h
++++ b/include/linux/exynos-ss.h
+@@ -173,6 +173,7 @@
+ #define exynos_ss_get_item_paddr(a)	do { } while(0)
+ #define exynos_ss_check_crash_key(a, b)	do { } while (0)
+ #define exynos_ss_i2c_clk(a, b)		do { } while (0)
++#define exynos_ss_panic_handler_safe(a)	do { } while (0)
+ #endif /* CONFIG_EXYNOS_SNAPSHOT */
+ 
+ /**
+--- a/include/linux/smc.h
++++ b/include/linux/smc.h
+@@ -230,9 +230,25 @@
+ 	E_DRMDRV_MFC_FW_INVALID_SIZE		= 0x8003,
+ };
+ 
++#ifdef CONFIG_SOC_EXYNOS7870
+ extern int __exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3);
+ extern int exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3);
+ extern int exynos_smc_readsfr(unsigned long addr, unsigned long* val);
++#else
++static inline int __exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3)
++{
++	return 0;
++}
++static inline int exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3)
++{
++	return 0;
++}
++static inline int exynos_smc_readsfr(unsigned long addr, unsigned long* val)
++{
++	if (val) *val = 0;
++	return 0;
++}
++#endif
+ #endif
+ 
+ #endif	/* __SMC_H__ */
+--- a/drivers/soc/samsung/pwrcal/pwrcal.h
++++ b/drivers/soc/samsung/pwrcal/pwrcal.h
+@@ -7,6 +7,26 @@
+ 
+ #define BLKPWR_MAGIC	0xB1380000
+ 
++struct dvfs_rate_volt {
++	unsigned long rate;
++	unsigned int volt;
++};
++
++enum cal_dfs_ext_ops {
++	cal_dfs_initsmpl		= 0,
++	cal_dfs_setsmpl		= 1,
++	cal_dfs_get_smplstatus	= 2,
++
++	cal_dfs_dvs = 30,
++
++	/* Add new ops at below */
++	cal_dfs_mif_is_dll_on	= 50,
++
++	cal_dfs_cpu_idle_clock_down = 60,
++};
++
++#ifdef CONFIG_PWRCAL
++
+ extern unsigned int cal_clk_get(char *name);
+ extern unsigned int cal_clk_is_enabled(unsigned int vclkid);
+ extern int cal_clk_setrate(unsigned int vclkid, unsigned long rate);
+@@ -34,11 +54,6 @@
+ extern int cal_dfs_get_rate_table(unsigned int id, unsigned long *table);
+ extern int cal_dfs_get_asv_table(unsigned int id, unsigned int *table);
+ 
+-
+-struct dvfs_rate_volt {
+-	unsigned long rate;
+-	unsigned int volt;
+-};
+ int cal_dfs_get_rate_asv_table(unsigned int id,
+ 					struct dvfs_rate_volt *table);
+ extern void cal_dfs_set_volt_margin(unsigned int id, int volt);
+@@ -47,19 +62,6 @@
+ 							unsigned long rate);
+ extern int cal_dfs_set_ema(unsigned int id, unsigned int volt);
+ 
+-enum cal_dfs_ext_ops {
+-	cal_dfs_initsmpl		= 0,
+-	cal_dfs_setsmpl		= 1,
+-	cal_dfs_get_smplstatus	= 2,
+-
+-	cal_dfs_dvs = 30,
+-
+-	/* Add new ops at below */
+-	cal_dfs_mif_is_dll_on	= 50,
+-
+-	cal_dfs_cpu_idle_clock_down = 60,
+-};
+-
+ extern int cal_dfs_ext_ctrl(unsigned int id,
+ 				enum cal_dfs_ext_ops ops,
+ 				int para);
+@@ -81,6 +83,55 @@
+ /* It is for debugging. */
+ extern void cal_vclk_dbg_info(unsigned int id);
+ 
++#else
++
++static inline unsigned int cal_clk_get(char *name) { return 0; }
++static inline unsigned int cal_clk_is_enabled(unsigned int vclkid) { return 0; }
++static inline int cal_clk_setrate(unsigned int vclkid, unsigned long rate) { return 0; }
++static inline unsigned long cal_clk_getrate(unsigned int vclkid) { return 0; }
++static inline int cal_clk_enable(unsigned int vclkid) { return 0; }
++static inline int cal_clk_disable(unsigned int vclkid) { return 0; }
++
++static inline int cal_pd_control(unsigned int id, int on) { return 0; }
++static inline int cal_pd_status(unsigned int id) { return 0; }
++
++static inline int cal_pm_enter(int mode) { return 0; }
++static inline int cal_pm_exit(int mode) { return 0; }
++static inline int cal_pm_earlywakeup(int mode) { return 0; }
++
++static inline unsigned int cal_dfs_get(char *name) { return 0; }
++static inline unsigned long cal_dfs_get_max_freq(unsigned int id) { return 0; }
++static inline unsigned long cal_dfs_get_min_freq(unsigned int id) { return 0; }
++static inline int cal_dfs_set_rate(unsigned int id, unsigned long rate) { return 0; }
++static inline int cal_dfs_set_rate_switch(unsigned int id, unsigned long switch_rate) { return 0; }
++static inline unsigned long cal_dfs_cached_get_rate(unsigned int id) { return 0; }
++static inline unsigned long cal_dfs_get_rate(unsigned int id) { return 0; }
++static inline int cal_dfs_get_rate_table(unsigned int id, unsigned long *table) { return 0; }
++static inline int cal_dfs_get_asv_table(unsigned int id, unsigned int *table) { return 0; }
++
++static inline int cal_dfs_get_rate_asv_table(unsigned int id, struct dvfs_rate_volt *table) { return 0; }
++static inline void cal_dfs_set_volt_margin(unsigned int id, int volt) { }
++static inline unsigned long cal_dfs_get_rate_by_member(unsigned int id, char *member, unsigned long rate) { return rate; }
++static inline int cal_dfs_set_ema(unsigned int id, unsigned int volt) { return 0; }
++
++static inline int cal_dfs_ext_ctrl(unsigned int id, enum cal_dfs_ext_ops ops, int para) { return 0; }
++
++static inline void cal_asv_print_info(void) { }
++static inline void cal_rcc_print_info(void) { }
++static inline int cal_asv_set_rcc_table(void) { return 0; }
++static inline void cal_asv_set_grp(unsigned int id, unsigned int asvgrp) { }
++static inline int cal_asv_get_grp(unsigned int id, unsigned int lv) { return 0; }
++static inline void cal_asv_set_tablever(unsigned int version) { }
++static inline int cal_asv_get_tablever(void) { return 0; }
++static inline void cal_asv_set_ssa0(unsigned int id, unsigned int ssa0) { }
++
++static inline int cal_init(void) { return 0; }
++static inline int is_sicd_factory(void) { return 0; }
++
++static inline void cal_vclk_dbg_info(unsigned int id) { }
++
++#endif
++
+ #ifdef __cplusplus
+ }
+ #endif
+--- a/include/sound/exynos.h
++++ b/include/sound/exynos.h
+@@ -52,7 +52,11 @@
+ 	AUD_MODE_UHQA,
+ };
+ 
++#ifdef CONFIG_SND_SAMSUNG_LPASS
+ extern void lpass_set_sched(pid_t pid, int mode);
++#else
++static inline void lpass_set_sched(pid_t pid, int mode) { }
++#endif
+ 
+ #if defined(CONFIG_SCHED_HMP) && defined(CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG)
+ #define USE_EXYNOS_AUD_CPU_HOTPLUG
+@@ -67,13 +71,22 @@
+ #endif
+ 
+ 
++#ifdef CONFIG_SND_SAMSUNG_LPASS
+ extern int lpass_register_subip(struct device *ip_dev, const char *ip_name);
+ extern int lpass_set_gpio_cb(struct device *ip_dev,
+ 			void (*ip_cb)(struct device *dev));
+ extern void lpass_get_sync(struct device *ip_dev);
+ extern void lpass_put_sync(struct device *ip_dev);
+ extern struct iommu_domain *lpass_get_iommu_domain(void);
++#else
++static inline int lpass_register_subip(struct device *ip_dev, const char *ip_name) { return 0; }
++static inline int lpass_set_gpio_cb(struct device *ip_dev, void (*ip_cb)(struct device *dev)) { return 0; }
++static inline void lpass_get_sync(struct device *ip_dev) { }
++static inline void lpass_put_sync(struct device *ip_dev) { }
++static inline struct iommu_domain *lpass_get_iommu_domain(void) { return NULL; }
++#endif
+ 
++#ifdef CONFIG_SND_SAMSUNG_LPASS
+ extern void lpass_add_stream(void); /*flag: true means compress stream else pcm */
+ extern void lpass_remove_stream(void);
+ extern void lpass_dma_enable(bool on);
+@@ -83,7 +96,16 @@
+ 
+ extern void lpass_set_ip_idle(bool value);
+ extern void lpass_set_fm_bt_mux(int is_fm);
++#else
++static inline void lpass_add_stream(void) { }
++static inline void lpass_remove_stream(void) { }
++static inline void lpass_dma_enable(bool on) { }
+ 
++static inline void lpass_reset(int ip, int op) { }
++static inline void lpass_reset_toggle(int ip) { }
+ 
++static inline void lpass_set_ip_idle(bool value) { }
++static inline void lpass_set_fm_bt_mux(int is_fm) { }
++#endif
+ 
+ #endif /* __SOUND_EXYNOS_H */
+--- a/include/soc/samsung/exynos-pmu.h
++++ b/include/soc/samsung/exynos-pmu.h
+@@ -36,10 +36,22 @@
+ /**
+  * The APIs to control the PMU
+  */
++#ifdef CONFIG_SOC_EXYNOS7870
+ int exynos_pmu_read(unsigned int offset, unsigned int *val);
+ int exynos_pmu_write(unsigned int offset, unsigned int val);
+ int exynos_pmu_update(unsigned int offset, unsigned int mask, unsigned int val);
+ 
+ int exynos_check_cp_status(void);
++#else
++static inline int exynos_pmu_read(unsigned int offset, unsigned int *val)
++{
++	if (val) *val = 0;
++	return 0;
++}
++static inline int exynos_pmu_write(unsigned int offset, unsigned int val) { return 0; }
++static inline int exynos_pmu_update(unsigned int offset, unsigned int mask, unsigned int val) { return 0; }
++
++static inline int exynos_check_cp_status(void) { return 0; }
++#endif
+ 
+ #endif /* __EXYNOS_PMU_H */
+--- a/arch/arm64/mm/fault.c
++++ b/arch/arm64/mm/fault.c
+@@ -43,7 +43,9 @@
+ 
+ static int safe_fault_in_progress = 0;
+ static const char *fault_name(unsigned int esr);
++#ifdef CONFIG_EXYNOS_SNAPSHOT
+ extern void exynos_ss_panic_handler_safe(struct pt_regs *regs);
++#endif
+ 
+ /*
+  * Dump out the page tables associated with 'addr' in mm 'mm'.
+--- a/include/soc/samsung/exynos-powermode.h
++++ b/include/soc/samsung/exynos-powermode.h
+@@ -65,7 +65,7 @@
+ #define IDLE_IP_MAX_CONFIGURABLE_INDEX	(IDLE_IP_MAX_INDEX - IDLE_IP_FIX_INDEX_COUNT)
+ 
+ 
+-#ifdef CONFIG_CPU_IDLE
++#if defined(CONFIG_CPU_IDLE) && defined(CONFIG_ARCH_EXYNOS)
+ void exynos_update_ip_idle_status(int index, int idle);
+ int exynos_get_idle_ip_index(const char *name);
+ void exynos_get_idle_ip_list(char *(*idle_ip_list)[IDLE_IP_REG_SIZE]);
+--- a/include/linux/i2c/fts.h
++++ b/include/linux/i2c/fts.h
+@@ -108,7 +108,11 @@
+ extern struct class *sec_class;
+ #endif
+ 
++#ifdef CONFIG_EXYNOS_DECON_LCD
+ extern unsigned int lcdtype;
++#else
++static unsigned int lcdtype = 0;
++#endif
+ 
+ void fts_charger_infom(bool en);
+ #ifdef CONFIG_TRUSTONIC_TRUSTED_UI
+--- a/include/linux/soc/samsung/exynos-soc.h
++++ b/include/linux/soc/samsung/exynos-soc.h
+@@ -49,11 +49,16 @@
+ 	u64 unique_id;
+ };
+ 
++#ifdef CONFIG_SOC_EXYNOS7870
+ extern struct exynos_chipid_info exynos_soc_info;
+ 
+ /* Since we need chipid to be initialized as early as possible
+  * during secondary core bootup adding early initialization function
+  */
+ extern void exynos_chipid_early_init(struct device *dev);
++#else
++static struct exynos_chipid_info exynos_soc_info = {0};
++static inline void exynos_chipid_early_init(struct device *dev) { }
++#endif
+ 
+ #endif /* __EXYNOS_SOC_H__ */
+--- a/include/soc/samsung/exynos-pm.h
++++ b/include/soc/samsung/exynos-pm.h
+@@ -40,7 +40,7 @@
+ 	SICD_AUD_EXIT,
+ };
+ 
+-#ifdef CONFIG_CPU_IDLE
++#if defined(CONFIG_CPU_IDLE) && defined(CONFIG_ARCH_EXYNOS)
+ int exynos_pm_register_notifier(struct notifier_block *nb);
+ int exynos_pm_unregister_notifier(struct notifier_block *nb);
+ int exynos_pm_lpa_enter(void);
+--- a/drivers/leds/sm5703_fled.c
++++ b/drivers/leds/sm5703_fled.c
+@@ -48,7 +48,11 @@
+ 
+ #define EN_FLED_IRQ 0
+ 
++#ifdef CONFIG_EXYNOS_FIMC_IS2
+ extern struct class *camera_class;
++#else
++static struct class *camera_class = NULL;
++#endif
+ struct device *flash_dev;
+ bool assistive_light = false;
+ bool recording_mode = false;
+@@ -988,12 +992,16 @@
+ 	/* Create Samsung Flash Sysfs */
+ 	create_flash_sysfs();
+ 
++#ifdef CONFIG_PINCTRL
+ 	pdata->fled_pinctrl = devm_pinctrl_get(&pdev->dev);
+ 	if (IS_ERR_OR_NULL(pdata->fled_pinctrl)) {
+ 		pr_err("%s:%d Getting pinctrl handle failed\n",
+ 				__func__, __LINE__);
+ 		return -EINVAL;
+ 	}
++#else
++	pdata->fled_pinctrl = NULL;
++#endif
+ 
+ 	SM5703_FLED_INFO("End : X\n");
+
+--- a/drivers/input/touchscreen/stm/fts7/fts_ts.c
++++ b/drivers/input/touchscreen/stm/fts7/fts_ts.c
+@@ -1922,9 +1922,11 @@
+ 			goto out;
+ 		}
+ 
++#ifdef CONFIG_PINCTRL
+ 		retval = pinctrl_select_state(pdata->pinctrl, pdata->pins_default);
+ 		if (retval < 0)
+ 			tsp_debug_err(true, dev, "%s: Failed to configure tsp_attn pin\n", __func__);
++#endif
+ 
+ 		fts_delay(5);
+ 	} else {
+@@ -1933,9 +1935,11 @@
+ 		if (regulator_is_enabled(regulator_avdd))
+ 			regulator_disable(regulator_avdd);
+ 
++#ifdef CONFIG_PINCTRL
+ 		retval = pinctrl_select_state(pdata->pinctrl, pdata->pins_sleep);
+ 		if (retval < 0)
+ 			tsp_debug_err(true, dev, "%s: Failed to configure tsp_attn pin\n", __func__);
++#endif
+ 	}
+ 
+ 	info->tsp_enabled = on;
+
+--- a/drivers/mmc/host/dw_mmc-exynos.c
++++ b/drivers/mmc/host/dw_mmc-exynos.c
+@@ -710,8 +710,10 @@
+ 	struct dw_mci_exynos_priv_data *priv = host->priv;
+ 	int ret;
+ 
++#ifdef CONFIG_PINCTRL
+ 	if (!IS_ERR(priv->pinctrl_clk_alive))
+ 		pinctrl_select_state(priv->pinctrl, priv->pinctrl_clk_alive);
++#endif
+ 
+ 	ret = clk_enable(host->ciu_clk);
+ 	if (ret)
+@@ -744,8 +746,10 @@
+ 	if (host->cur_slot)
+ 		clk_disable(host->biu_clk);
+ 
++#ifdef CONFIG_PINCTRL
+ 	if (!IS_ERR(priv->pinctrl_clk_idle))
+ 		pinctrl_select_state(priv->pinctrl, priv->pinctrl_clk_idle);
++#endif
+ 
+ 	return 0;
+ }
+
+--- a/drivers/misc/gnss_if/gnss_keplerctl_device.c
++++ b/drivers/misc/gnss_if/gnss_keplerctl_device.c
+@@ -262,10 +262,12 @@
+ 
+ 	gif_err("Change GPIO for sensor\n");
+ 	if (!IS_ERR(gc->gnss_sensor_gpio)) {
++#ifdef CONFIG_PINCTRL
+ 		status = pinctrl_select_state(gc->gnss_gpio, gc->gnss_sensor_gpio);
+ 		if (status) {
+ 			gif_err("Can't change sensor GPIO(%d)\n", status);
+ 		}
++#endif
+ 	} else {
+ 		gif_err("gnss_sensor_gpio is not valid(0x%p)\n", gc->gnss_sensor_gpio);
+ 		status = -EIO;
+
+--- a/drivers/bluetooth/bluetooth-power.c
++++ b/drivers/bluetooth/bluetooth-power.c
+@@ -566,7 +566,9 @@
+ 	bt_lpm.uport = msm_hs_get_uart_port(BT_PORT_ID);
+ 	if (!bt_lpm.uport) {
+ 		pr_err("uart port is not available");
++#ifdef CONFIG_SERIAL_SAMSUNG
+ 		s3c2410_serial_wake_peer(NULL);
++#endif
+ 		return -ENODEV;
+ 	}
+ 
+--- a/drivers/staging/android/ion/ion.c
++++ b/drivers/staging/android/ion/ion.c
+@@ -823,7 +823,11 @@
+ 	struct ion_device *dev = client->dev;
+ 	struct ion_buffer *buffer = NULL;
+ 	struct ion_heap *heap;
++#ifdef CONFIG_ION_EXYNOS
+ 	int heap_id = ion_parse_heap_id(heap_id_mask, heap_type);
++#else
++	int heap_id = 0;
++#endif
+ 	int ret;
+ 
+ 	pr_debug("%s: len %zu align %zu heap_id_mask %u flags %x\n", __func__,
+--- a/drivers/staging/samsung/sec_bootstat.c
++++ b/drivers/staging/samsung/sec_bootstat.c
+@@ -117,7 +117,11 @@
+ 	sec_bootstat_buf_add(buf, "[%6lu.%03lu] %c|%s", t / 1000, t % 1000,
+ 			     prefix, str);
+ 
++#ifdef CONFIG_SEC_BOOTSTAT
+ 	sec_bootstat_get_cpuinfo(buf);
++#else
++	sec_bootstat_buf_add(buf, "|[no cpuinfo]");
++#endif
+ 
+ 	len = strlen(buf);
+ 
+@@ -204,7 +208,11 @@
+ 
+ 	sec_bootstat_buf_add(buf, " Boot_SVC : %s\n", str);
+ 
++#ifdef CONFIG_SEC_BOOTSTAT
+ 	sec_bootstat_get_cpuinfo(buf);
++#else
++	sec_bootstat_buf_add(buf, "[no cpuinfo]\n");
++#endif
+ 
+ 	return strlen(buf);
+ }
+--- a/drivers/soc/samsung/exynos-hotplug_governor.c
++++ b/drivers/soc/samsung/exynos-hotplug_governor.c
+@@ -552,7 +552,11 @@
+ 	if (ret)
+ 		pr_err("%s: failed to create sysfs interface\n", __func__);
+ 
++#ifdef CONFIG_HOTPLUG_CPU
+ 	exynos_cpu_hotplug_kobj();
++#else
++	pr_debug("%s: CPU hotplug disabled\n", __func__);
++#endif
+ 
+ 	return ret;
+ }
+--- a/drivers/usb/notify/usb_notifier.c
++++ b/drivers/usb/notify/usb_notifier.c
+@@ -131,7 +131,9 @@
+ 		pr_info("usb: VBUS detect\n");
+ 		usbio_data.usb_state = USB_VBUS_ATTACHED;
+ 	}
++#ifdef CONFIG_USB_DWC3_EXYNOS
+ 	dwc3_exynos_vbus_event(usbio_data.usb_state);
++#endif
+ 	wake_up(&usbio_data.usb_detection_wait);
+ 	pm_wakeup_event(usbio_data.dev, 5 * MSEC_PER_SEC);
+ }
+@@ -166,7 +168,9 @@
+ 		pr_info("usb: USB_ID removed\n");
+ 		usbio_data.usb_state = USB_ID_DETACHED;
+ 	}
++#ifdef CONFIG_USB_DWC3_EXYNOS
+ 	dwc3_exynos_id_event(usbio_data.usb_state);
++#endif
+ 	wake_up(&usbio_data.usb_detection_wait);
+ 	pm_wakeup_event(usbio_data.dev, 5 * MSEC_PER_SEC);
+ }
+
+--- a/drivers/bluetooth/bluetooth-power.c
++++ b/drivers/bluetooth/bluetooth-power.c
+@@ -566,7 +566,9 @@
+ 	wake_lock_init(&bt_lpm.bt_wake_lock, WAKE_LOCK_SUSPEND,
+ 			 "BT_bt_wake");
+ 
++#ifdef CONFIG_SERIAL_SAMSUNG
+ 	s3c2410_serial_wake_peer[BT_UPORT] = (s3c_wake_peer_t) qcomm_bt_lpm_exit_lpm_locked;
++#endif
+
+
+--- a/drivers/staging/android/ion/ion.c
++++ b/drivers/staging/android/ion/ion.c
+@@ -823,7 +823,11 @@
+ 		return ERR_PTR(-EINVAL);
+ 	}
+
++#ifdef CONFIG_ION_EXYNOS
+ 	heap_id_mask = ion_parse_heap_id(heap_id_mask, flags);
++#else
++	heap_id_mask = heap_id_mask;  /* Keep original value */
++#endif
+ 	if (heap_id_mask == 0) {
+ 		trace_ion_alloc_fail(client->name, EINVAL, len,
+ 				align, heap_id_mask, flags);
+
+--- a/drivers/staging/samsung/sec_bootstat.c
++++ b/drivers/staging/samsung/sec_bootstat.c
+@@ -117,7 +117,13 @@
+ 				t = local_clock();
+ 				do_div(t, 1000000);
+ 				boot_events[i].time = (unsigned int)t;
++#ifdef CONFIG_SEC_BOOTSTAT
+ 				sec_bootstat_get_cpuinfo(boot_events[i].freq, &boot_events[i].online);
++#else
++				/* Stub values when SEC_BOOTSTAT is disabled */
++				memset(boot_events[i].freq, 0, sizeof(boot_events[i].freq));
++				memset(boot_events[i].online, 0, sizeof(boot_events[i].online));
++#endif
+ 				sec_bootstat_get_thermal(boot_events[i].temp,
+ 								ARRAY_SIZE(boot_events[i].temp));
+ 			}
+@@ -204,7 +210,13 @@
+ 		t = local_clock();
+ 		do_div(t, 1000000);
+ 		boot_events[0].time = (unsigned int)t;
++#ifdef CONFIG_SEC_BOOTSTAT
+ 		sec_bootstat_get_cpuinfo(boot_events[0].freq, &boot_events[0].online);
++#else
++		/* Stub values when SEC_BOOTSTAT is disabled */
++		memset(boot_events[0].freq, 0, sizeof(boot_events[0].freq));
++		memset(boot_events[0].online, 0, sizeof(boot_events[0].online));
++#endif
+ 		sec_bootstat_get_thermal(boot_events[0].temp,
+ 						ARRAY_SIZE(boot_events[0].temp));
+ 	}
+
+--- a/drivers/soc/samsung/exynos-hotplug_governor.c
++++ b/drivers/soc/samsung/exynos-hotplug_governor.c
+@@ -552,7 +552,11 @@
+ #endif
+
+ 	exynos_hpgov.attrib.attrib_group.name = "governor";
++#ifdef CONFIG_HOTPLUG_CPU
+ 	ret = sysfs_create_group(exynos_cpu_hotplug_kobj(), &exynos_hpgov.attrib.attrib_group);
++#else
++	ret = 0;  /* Skip hotplug setup when disabled */
++#endif
+ 	if (ret)
+ 		pr_err("Unable to create sysfs objects :%d\n", ret);
+
+--- a/drivers/usb/notify/usb_notifier.c
++++ b/drivers/usb/notify/usb_notifier.c
+@@ -131,7 +131,9 @@
+ 		if (pdev) {
+ 			pr_info("%s: get the %s platform_device\n",
+ 			__func__, pdev->name);
++#ifdef CONFIG_USB_DWC3_EXYNOS
+ 			dwc3_exynos_vbus_event(&pdev->dev, state);
++#endif
+ 			goto end;
+ 		}
+ 	}
+@@ -166,7 +168,9 @@
+ 		if (pdev) {
+ 			pr_info("%s: get the %s platform_device\n",
+ 			__func__, pdev->name);
++#ifdef CONFIG_USB_DWC3_EXYNOS
+ 			dwc3_exynos_id_event(&pdev->dev, state);
++#endif
+ 			goto end;
+ 		}
+ 	}
+
+--- a/drivers/staging/samsung/sec_bootstat.c
++++ b/drivers/staging/samsung/sec_bootstat.c
+@@ -245,4 +245,15 @@
+ 	return 0;
+ }
+ 
++#ifndef CONFIG_ARM_EXYNOS_MP_CPUFREQ
++/* Stub implementation when CPUFREQ driver is not available */
++void sec_bootstat_get_cpuinfo(int *freq, int *online)
++{
++	/* Provide stub values */
++	freq[0] = 0;  /* cluster 0 frequency */
++	freq[1] = 0;  /* cluster 1 frequency */
++	*online = 1;  /* assume at least one CPU online */
++}
++#endif
++
+ module_init(sec_bootstat_init);
+
+--- a/include/soc/samsung/exynos-cpu_hotplug.h
++++ b/include/soc/samsung/exynos-cpu_hotplug.h
+@@ -12,8 +12,13 @@
+ #ifndef __EXYNOS_CPU_HOTPLUG_H
+ #define __EXYNOS_CPU_HOTPLUG_H __FILE__
+ 
++#ifdef CONFIG_ARCH_EXYNOS
+ struct kobject *exynos_cpu_hotplug_kobj(void);
+ bool exynos_cpu_hotplug_enabled(void);
++#else
++static inline struct kobject *exynos_cpu_hotplug_kobj(void) { return NULL; }
++static inline bool exynos_cpu_hotplug_enabled(void) { return false; }
++#endif
+ 
+ #endif /* __EXYNOS_CPU_HOTPLUG_H */
+
+--- a/drivers/soc/samsung/exynos-hotplug_governor.c
++++ b/drivers/soc/samsung/exynos-hotplug_governor.c
+@@ -552,9 +552,14 @@
+ #endif
+ 
+ 	exynos_hpgov.attrib.attrib_group.name = "governor";
++#ifdef CONFIG_ARCH_EXYNOS
+ 	ret = sysfs_create_group(exynos_cpu_hotplug_kobj(), &exynos_hpgov.attrib.attrib_group);
+ 	if (ret)
+ 		pr_err("Unable to create sysfs objects :%d\n", ret);
++#else
++	pr_debug("CPU hotplug disabled, skipping sysfs setup\n");
++	ret = 0;
++#endif
+ 
+ 	atomic_set(&exynos_hpgov.cur_cpu_max, PM_QOS_CPU_ONLINE_MAX_DEFAULT_VALUE);
+ #ifndef CONFIG_SCHED_HMP

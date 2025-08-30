@@ -1,0 +1,60 @@
+#!/bin/sh
+echo "=== SM-T580 Debug Environment ==="
+echo "Setting up environment..."
+
+# Create essential device nodes first
+mknod /dev/zero c 1 5 2>/dev/null
+
+mkdir /proc /sys /dev/block
+
+# Mount essential filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+#mount -t devtmpfs devtmpfs /dev
+
+platformname=00000000.virtio
+
+mkdir -p /dev/block/platform/$platformname/by-name
+
+for dev in /sys/block/vd*; do
+    devname=$(basename $dev)
+    serial=$(cat $dev/serial 2>/dev/null)
+    [ -n "$serial" ] && ln -sf /dev/block/$devname /dev/block/platform/$platformname/by-name/$serial
+done
+
+# Create block devices automatically from /proc/partitions (vd* only)
+while read -r major minor _ name; do
+    # Skip header, ram devices, and non-vd devices
+    [ "$major" = "major" ] && continue
+    [ "$major" = "1" ] && continue
+    case "$name" in
+        vd*) [ -n "$name" ] && mknod /dev/block/"$name" b "$major" "$minor" ;;
+    esac
+done < /proc/partitions
+
+mkdir /system /cache /data
+
+# Mount Android partitions in read-only mode
+echo "Mounting Android partitions (read-only)..."
+mount -t ext4 -o ro /dev/block/platform/$platformname/by-name/SYSTEM /system
+mount -t ext4 -o ro /dev/block/platform/$platformname/by-name/CACHE /cache
+mount -t ext4 -o ro /dev/block/platform/$platformname/by-name/USERDATA /data
+
+mkdir /hostqemu
+mount -t 9p -o trans=virtio hostqemu /hostqemu
+
+echo "Mounted filesystems:"
+df -h
+
+echo
+echo "Debug shell ready. Available commands: ls, cat, mount, df, ps, etc."
+echo "Android partitions mounted read-only under /mnt/"
+echo
+
+# Show final status and start interactive shell
+echo "=== Debug Environment Ready ==="
+echo "Type 'exit' to reboot or use Ctrl+A then X to quit QEMU"
+export PS1="recovery# "
+
+# Start interactive shell with proper I/O redirection
+exec /bin/sh

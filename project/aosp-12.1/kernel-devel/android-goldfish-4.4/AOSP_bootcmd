@@ -1,0 +1,21 @@
+qemu-system-aarch64 -dns-server 127.0.0.53 \
+	-mem-path /home/emiliano/git/AOSP/build/out/target/product/generic_arm64/snapshots/default_boot/ram.img \
+	-mem-file-shared -serial stdio \
+	-device goldfish_pstore,addr=0xff018000,size=0x10000,file=/home/emiliano/git/AOSP/build/out/target/product/generic_arm64/build.avd/data/misc/pstore/pstore.bin \
+	-cpu cortex-a57 -machine type=ranchu -m 2048 -lcd-density 160 -nodefaults \
+	-kernel /run/media/emiliano/AndroidSources/12/prebuilts/qemu-kernel/arm64/ranchu/kernel-qemu \
+	-initrd /home/emiliano/git/AOSP/build/out/target/product/generic_arm64/ramdisk.img \
+	-drive index=0,id=userdata,if=none,file=/home/emiliano/git/AOSP/build/out/target/product/generic_arm64/userdata-qemu.img.qcow2,overlap-check=none,cache=unsafe,l2-cache-size=1048576 \
+	-device virtio-blk-device,drive=userdata \
+	-drive index=1,id=cache,if=none,file=/home/emiliano/git/AOSP/build/out/target/product/generic_arm64/cache.img.qcow2,overlap-check=none,cache=unsafe,l2-cache-size=1048576 \
+	-device virtio-blk-device,drive=cache \
+	-drive index=2,id=system,if=none,file=/home/emiliano/git/AOSP/build/out/target/product/generic_arm64/system.img,read-only \
+	-device virtio-blk-device,drive=system \
+	-netdev user,id=mynet \
+	-device virtio-net-device,netdev=mynet \
+	-device virtio-rng-device \
+	-show-cursor \
+	-L /run/media/emiliano/AndroidSources/12/prebuilts/android-emulator/linux-x86_64/lib/pc-bios \
+	-soundhw hda \
+	-append 'no_timer_check console=ttyAMA0,38400 keep_bootcon earlyprintk=ttyAMA0 cma=4M@0-4G loop.max_part=7 ramoops.mem_address=0xff018000 ramoops.mem_size=0x10000 memmap=0x10000$0xff018000 printk.devkmsg=on qemu=1 androidboot.hardware=ranchu androidboot.serialno=EMULATOR30X9X0X0 qemu.gles=1 qemu.settings.system.screen_off_timeout=2147483647 qemu.vsync=60 qemu.gltransport=pipe qemu.gltransport.drawFlushInterval=800 qemu.opengles.version=131072 qemu.dalvik.vm.heapsize=512m qemu.camera_protocol_ver=1 android.qemud=1 qemu.avd_name=<build>' \
+	-android-hw /home/emiliano/git/AOSP/build/out/target/product/generic_arm64/hardware-qemu.ini

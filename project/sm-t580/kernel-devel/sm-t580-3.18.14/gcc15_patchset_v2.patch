@@ -1,0 +1,491 @@
+diff -Naur original-sm-t580-3.18.14/arch/arm64/boot/dts/Makefile sm-t580-3.18.14/arch/arm64/boot/dts/Makefile
+--- original-sm-t580-3.18.14/arch/arm64/boot/dts/Makefile	2018-10-29 07:33:47.000000000 +0100
++++ sm-t580-3.18.14/arch/arm64/boot/dts/Makefile	2025-08-28 15:37:00.029185060 +0200
+@@ -7,4 +7,6 @@
+ 
+ dtbs: $(addprefix $(obj)/, $(DTB_LIST))
+ 
++dtbs_install: $(addsuffix _dtbinst_, $(dtb-y))
++
+ clean-files := *.dtb*
+diff -Naur original-sm-t580-3.18.14/arch/arm64/kernel/vdso/vdso-offsets.h sm-t580-3.18.14/arch/arm64/kernel/vdso/vdso-offsets.h
+--- original-sm-t580-3.18.14/arch/arm64/kernel/vdso/vdso-offsets.h	1970-01-01 01:00:00.000000000 +0100
++++ sm-t580-3.18.14/arch/arm64/kernel/vdso/vdso-offsets.h	2025-08-29 17:03:48.861083743 +0200
+@@ -0,0 +1 @@
++#define vdso_offset_sigtramp	0x04f0
+diff -Naur original-sm-t580-3.18.14/arch/arm64/Makefile sm-t580-3.18.14/arch/arm64/Makefile
+--- original-sm-t580-3.18.14/arch/arm64/Makefile	2018-10-29 07:24:35.000000000 +0100
++++ sm-t580-3.18.14/arch/arm64/Makefile	2025-08-28 15:36:50.227869492 +0200
+@@ -79,6 +79,10 @@
+ dtbs: scripts
+ 	$(Q)$(MAKE) $(build)=$(boot)/dts dtbs
+ 
++PHONY += dtbs_install
++dtbs_install: dtbs
++	$(Q)$(MAKE) $(build)=$(boot)/dts dtbs_install
++
+ Image.gz-dtb: vmlinux scripts dtbs
+ 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
+ 
+diff -Naur original-sm-t580-3.18.14/arch/arm64/mm/proc.S sm-t580-3.18.14/arch/arm64/mm/proc.S
+--- original-sm-t580-3.18.14/arch/arm64/mm/proc.S	2018-10-29 07:24:35.000000000 +0100
++++ sm-t580-3.18.14/arch/arm64/mm/proc.S	2025-08-28 14:09:48.276327536 +0200
+@@ -186,7 +186,7 @@
+ 	ret
+ ENDPROC(cpu_do_switch_mm)
+ 
+-	.section ".text.init", #alloc, #execinstr
++	.section ".text.init", "ax"
+ 
+ /*
+  *	__cpu_setup
+diff -Naur original-sm-t580-3.18.14/drivers/gpu/Makefile sm-t580-3.18.14/drivers/gpu/Makefile
+--- original-sm-t580-3.18.14/drivers/gpu/Makefile	2018-10-29 07:24:36.000000000 +0100
++++ sm-t580-3.18.14/drivers/gpu/Makefile	2025-08-28 14:18:35.740019491 +0200
+@@ -1,3 +1,4 @@
+-obj-y			+= drm/ vga/ arm/
++obj-y			+= drm/ vga/
++obj-$(CONFIG_MALI)	+= arm/
+ obj-$(CONFIG_TEGRA_HOST1X)	+= host1x/
+ obj-$(CONFIG_IMX_IPUV3_CORE)	+= ipu-v3/
+\ No newline at end of file
+diff -Naur original-sm-t580-3.18.14/drivers/pci/host/Kconfig sm-t580-3.18.14/drivers/pci/host/Kconfig
+--- original-sm-t580-3.18.14/drivers/pci/host/Kconfig	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/pci/host/Kconfig	2025-08-29 14:36:04.156404716 +0200
+@@ -54,7 +54,7 @@
+ 
+ config PCI_HOST_GENERIC
+ 	bool "Generic PCI host controller"
+-	depends on ARM && OF
++	depends on (ARM || ARM64) && OF
+ 	help
+ 	  Say Y here if you want to support a simple generic PCI host
+ 	  controller, such as the one emulated by kvmtool.
+diff -Naur original-sm-t580-3.18.14/drivers/pci/host/pci-host-generic.c sm-t580-3.18.14/drivers/pci/host/pci-host-generic.c
+--- original-sm-t580-3.18.14/drivers/pci/host/pci-host-generic.c	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/pci/host/pci-host-generic.c	2025-08-29 14:45:13.419857939 +0200
+@@ -24,6 +24,9 @@
+ #include <linux/of_address.h>
+ #include <linux/of_pci.h>
+ #include <linux/platform_device.h>
++#ifdef CONFIG_ARM
++#include <asm/mach/pci.h>
++#endif
+ 
+ struct gen_pci_cfg_bus_ops {
+ 	u32 bus_shift;
+@@ -48,8 +51,12 @@
+ 					     unsigned int devfn,
+ 					     int where)
+ {
++#ifdef CONFIG_ARM
+ 	struct pci_sys_data *sys = bus->sysdata;
+ 	struct gen_pci *pci = sys->private_data;
++#else
++	struct gen_pci *pci = container_of(bus->sysdata, struct gen_pci, host);
++#endif
+ 	resource_size_t idx = bus->number - pci->cfg.bus_range.start;
+ 
+ 	return pci->cfg.win[idx] + ((devfn << 8) | where);
+@@ -64,8 +71,12 @@
+ 					      unsigned int devfn,
+ 					      int where)
+ {
++#ifdef CONFIG_ARM
+ 	struct pci_sys_data *sys = bus->sysdata;
+ 	struct gen_pci *pci = sys->private_data;
++#else
++	struct gen_pci *pci = container_of(bus->sysdata, struct gen_pci, host);
++#endif
+ 	resource_size_t idx = bus->number - pci->cfg.bus_range.start;
+ 
+ 	return pci->cfg.win[idx] + ((devfn << 12) | where);
+@@ -80,8 +91,12 @@
+ 				int where, int size, u32 *val)
+ {
+ 	void __iomem *addr;
++#ifdef CONFIG_ARM
+ 	struct pci_sys_data *sys = bus->sysdata;
+ 	struct gen_pci *pci = sys->private_data;
++#else
++	struct gen_pci *pci = container_of(bus->sysdata, struct gen_pci, host);
++#endif
+ 
+ 	addr = pci->cfg.ops->map_bus(bus, devfn, where);
+ 
+@@ -103,8 +118,12 @@
+ 				 int where, int size, u32 val)
+ {
+ 	void __iomem *addr;
++#ifdef CONFIG_ARM
+ 	struct pci_sys_data *sys = bus->sysdata;
+ 	struct gen_pci *pci = sys->private_data;
++#else
++	struct gen_pci *pci = container_of(bus->sysdata, struct gen_pci, host);
++#endif
+ 
+ 	addr = pci->cfg.ops->map_bus(bus, devfn, where);
+ 
+@@ -138,6 +157,7 @@
+ };
+ MODULE_DEVICE_TABLE(of, gen_pci_of_match);
+ 
++#ifdef CONFIG_ARM
+ static int gen_pci_calc_io_offset(struct device *dev,
+ 				  struct of_pci_range *range,
+ 				  struct resource *res,
+@@ -166,6 +186,17 @@
+ 	*offset = window - range->pci_addr;
+ 	return 0;
+ }
++#else
++/* ARM64: IO space mapping not supported, skip IO resources */
++static int gen_pci_calc_io_offset(struct device *dev,
++				  struct of_pci_range *range,
++				  struct resource *res,
++				  resource_size_t *offset)
++{
++	dev_warn(dev, "IO space mapping not supported on ARM64, skipping\n");
++	return -EINVAL;
++}
++#endif
+ 
+ static int gen_pci_calc_mem_offset(struct device *dev,
+ 				   struct of_pci_range *range,
+@@ -310,12 +341,14 @@
+ 	return 0;
+ }
+ 
++#ifdef CONFIG_ARM
+ static int gen_pci_setup(int nr, struct pci_sys_data *sys)
+ {
+ 	struct gen_pci *pci = sys->private_data;
+ 	list_splice_init(&pci->resources, &sys->resources);
+ 	return 1;
+ }
++#endif
+ 
+ static int gen_pci_probe(struct platform_device *pdev)
+ {
+@@ -326,6 +359,7 @@
+ 	struct device *dev = &pdev->dev;
+ 	struct device_node *np = dev->of_node;
+ 	struct gen_pci *pci = devm_kzalloc(dev, sizeof(*pci), GFP_KERNEL);
++#ifdef CONFIG_ARM
+ 	struct hw_pci hw = {
+ 		.nr_controllers	= 1,
+ 		.private_data	= (void **)&pci,
+@@ -333,6 +367,7 @@
+ 		.map_irq	= of_irq_parse_and_map_pci,
+ 		.ops		= &gen_pci_ops,
+ 	};
++#endif
+ 
+ 	if (!pci)
+ 		return -ENOMEM;
+@@ -369,7 +404,26 @@
+ 		return err;
+ 	}
+ 
++#ifdef CONFIG_ARM
+ 	pci_common_init_dev(dev, &hw);
++#else
++	/* ARM64: Create and register PCI bus directly */
++	{
++		struct pci_bus *bus;
++		
++		bus = pci_create_root_bus(dev, pci->cfg.bus_range.start,
++					  &gen_pci_ops, pci, &pci->resources);
++		if (!bus) {
++			dev_err(dev, "Failed to create root bus\n");
++			gen_pci_release_of_pci_ranges(pci);
++			return -ENOMEM;
++		}
++		
++		pci_scan_child_bus(bus);
++		pci_assign_unassigned_bus_resources(bus);
++		pci_bus_add_devices(bus);
++	}
++#endif
+ 	return 0;
+ }
+ 
+diff -Naur original-sm-t580-3.18.14/drivers/staging/android/sync.c sm-t580-3.18.14/drivers/staging/android/sync.c
+--- original-sm-t580-3.18.14/drivers/staging/android/sync.c	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/staging/android/sync.c	2025-08-29 11:05:00.864969429 +0200
+@@ -28,6 +28,11 @@
+ 
+ #include "sync.h"
+ 
++#ifdef CONFIG_MALI_SEC_JOB_STATUS_CHECK
++/* Provide weak symbol for gpu_job_fence_status_dump in case it's not compiled */
++int __weak gpu_job_fence_status_dump(struct sync_fence *fence) { return 0; }
++#endif
++
+ #define CREATE_TRACE_POINTS
+ #include "trace/sync.h"
+ 
+@@ -449,7 +454,7 @@
+ 			pr_info("fence timeout on [%pK] after %dms\n", fence,
+ 				jiffies_to_msecs(timeout));
+ #endif
+-#ifdef CONFIG_MALI_SEC_JOB_STATUS_CHECK
++#if defined(CONFIG_MALI_SEC_JOB_STATUS_CHECK) && defined(CONFIG_MALI)
+ 			pr_info("GPU JOB STATUS DUMP\n");
+ 			gpu_job_fence_status_dump(fence);
+ #endif
+diff -Naur original-sm-t580-3.18.14/drivers/usb/host/ehci.h sm-t580-3.18.14/drivers/usb/host/ehci.h
+--- original-sm-t580-3.18.14/drivers/usb/host/ehci.h	2018-10-29 07:24:39.000000000 +0100
++++ sm-t580-3.18.14/drivers/usb/host/ehci.h	2025-08-29 14:57:50.020046936 +0200
+@@ -849,6 +849,8 @@
+ 	dev_info(ehci_to_hcd(ehci)->self.controller , fmt , ## args)
+ #define ehci_warn(ehci, fmt, args...) \
+ 	dev_warn(ehci_to_hcd(ehci)->self.controller , fmt , ## args)
++#define ehci_vdbg(ehci, fmt, args...) \
++	dev_vdbg(ehci_to_hcd(ehci)->self.controller , fmt , ## args)
+ 
+ 
+ #ifndef CONFIG_DYNAMIC_DEBUG
+diff -Naur original-sm-t580-3.18.14/firmware/Makefile sm-t580-3.18.14/firmware/Makefile
+--- original-sm-t580-3.18.14/firmware/Makefile	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/firmware/Makefile	2025-08-28 15:34:32.980450569 +0200
+@@ -181,7 +181,7 @@
+ fw-shipped-$(CONFIG_KEYBOARD_TC300K) += coreriver/tc350k_j7x.fw coreriver/tc305k_j7pop.fw coreriver/tc350k_j7ve.fw coreriver/tc305k_j7top.fw \
+ 					coreriver/tc305k_j7top_kor.fw coreriver/tc305k_j7top_gsm.fw
+ fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS204) += melfas_tk/mhs204g_on7xlte.fw
+-fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS2041) += melfas_tk/mhs204_j5y17.fw melfas_tk/mhs2041_j5y17.fw melfas_tk/mhs2041_j7y17.fw
++fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS2041) += melfas_tk/mhs204_j5y17.fw
+ fw-shipped-$(CONFIG_KEYBOARD_MELFAS_MHS2041B) += melfas_tk/mhs2041_j5y17.fw melfas_tk/mhs2041B_j5y17.fw melfas_tk/mhs2041B_j5y17_new.fw \
+ 						melfas_tk/mhs2041_j7y17.fw melfas_tk/mhs2041B_j7y17.fw melfas_tk/mhs2041B_j7y17_new.fw \
+ 						melfas_tk/mhs2041B_j7y17_ltn.fw melfas_tk/mhs2041B_j7y17_open.fw melfas_tk/melfas_mip4_tk.fw
+@@ -201,8 +201,7 @@
+ fw-shipped-$(CONFIG_SENSORS_SSP_2017A3) += ssp_stmf410_a2017.fw
+ fw-shipped-$(CONFIG_SENSORS_SSP_A3XPREMIUM) += ssp_stmf410_a3p.fw
+ fw-shipped-$(CONFIG_SENSORS_SSP_A3Y17PREMIUM) += ssp_stmf410_a2017_p.fw
+-fw-shipped-$(CONFIG_SENSORS_SSP_STM32) += ssp_crashed.fw
+-fw-shipped-$(CONFIG_SENSORS_SSP_STM_V2) += ssp_crashed.fw
++fw-shipped-$(CONFIG_SENSORS_SSP) += ssp_crashed.fw
+ 
+ # FPGA for IRIS
+ fw-shipped-$(CONFIG_LEDS_IRIS_FPGA_ICE40XX) += ice40xx/ice40_fpga_iris_V01.fw
+diff -Naur original-sm-t580-3.18.14/fs/file.c sm-t580-3.18.14/fs/file.c
+--- original-sm-t580-3.18.14/fs/file.c	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/fs/file.c	2025-08-28 15:05:25.001052421 +0200
+@@ -30,9 +30,7 @@
+ int sysctl_nr_open_max = __const_max(INT_MAX, ~(size_t)0/sizeof(void *)) &
+ 			 -BITS_PER_LONG;
+ 
+-#ifdef CONFIG_SEC_DEBUG_FILE_LEAK
+-extern void	sec_debug_EMFILE_error_proc(unsigned long files_addr);
+-#endif
++#include <linux/sec_debug.h>
+ static void *alloc_fdmem(size_t size)
+ {
+ 	/*
+diff -Naur original-sm-t580-3.18.14/include/linux/compiler-gcc15.h sm-t580-3.18.14/include/linux/compiler-gcc15.h
+--- original-sm-t580-3.18.14/include/linux/compiler-gcc15.h	1970-01-01 01:00:00.000000000 +0100
++++ sm-t580-3.18.14/include/linux/compiler-gcc15.h	2025-08-29 11:08:22.967215450 +0200
+@@ -0,0 +1,65 @@
++#ifndef __LINUX_COMPILER_H
++#error "Please don't include <linux/compiler-gcc15.h> directly, include <linux/compiler.h> instead."
++#endif
++
++#pragma GCC diagnostic ignored "-Wattributes"
++#pragma GCC diagnostic ignored "-Wpragmas"
++#pragma GCC diagnostic ignored "-Wformat-truncation"
++#pragma GCC diagnostic ignored "-Warray-bounds"
++#pragma GCC diagnostic ignored "-Wpacked-not-aligned"
++#pragma GCC diagnostic ignored "-Wattribute-alias"
++#pragma GCC diagnostic ignored "-Waddress"
++#pragma GCC diagnostic ignored "-Warray-compare"
++#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
++#pragma GCC diagnostic ignored "-Wdangling-pointer"
++#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
++#pragma GCC diagnostic ignored "-Wsizeof-pointer-memaccess"
++#pragma GCC diagnostic ignored "-Wstringop-truncation"
++#pragma GCC diagnostic ignored "-Wstringop-overread"
++#pragma GCC diagnostic ignored "-Wstringop-overflow"
++#pragma GCC diagnostic ignored "-Wint-in-bool-context"
++#pragma GCC diagnostic ignored "-Wrestrict"
++#pragma GCC diagnostic ignored "-Wmacro-redefined"
++#pragma GCC diagnostic ignored "-Wformat-overflow"
++#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
++#pragma GCC diagnostic ignored "-Wunused-const-variable"
++#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
++#pragma GCC diagnostic ignored "-Wswitch-unreachable"
++#pragma GCC diagnostic ignored "-Wdiscarded-array-qualifiers"
++#pragma GCC diagnostic ignored "-Wlogical-not-parentheses"
++#pragma GCC diagnostic ignored "-Wmisleading-indentation"
++#pragma GCC diagnostic ignored "-Wmemset-elt-size"
++#pragma GCC diagnostic ignored "-Wduplicate-decl-specifier"
++#pragma GCC diagnostic ignored "-Wheader-guard"
++#pragma GCC diagnostic ignored "-Wzero-length-bounds"
++#pragma GCC diagnostic ignored "-Wsizeof-pointer-div"
++#pragma GCC diagnostic ignored "-Wbool-operation"
++#pragma GCC diagnostic ignored "-Wtautological-compare"
++
++
++#define __used				__attribute__((__used__))
++#define __must_check			__attribute__((warn_unused_result))
++#define __compiler_offsetof(a, b)	__builtin_offsetof(a, b)
++
++#define __cold			__attribute__((__cold__))
++
++#define __UNIQUE_ID(prefix) __PASTE(__PASTE(__UNIQUE_ID_, prefix), __COUNTER__)
++
++#ifndef __CHECKER__
++# define __compiletime_warning(message) __attribute__((warning(message)))
++# define __compiletime_error(message) __attribute__((error(message)))
++#endif /* __CHECKER__ */
++
++#define unreachable() __builtin_unreachable()
++
++#define __noclone	__attribute__((__noclone__))
++
++#define __visible __attribute__((externally_visible))
++
++#define asm_volatile_goto(x...)	do { asm goto(x); asm (""); } while (0)
++
++#ifdef CONFIG_ARCH_USE_BUILTIN_BSWAP
++#define __HAVE_BUILTIN_BSWAP32__
++#define __HAVE_BUILTIN_BSWAP64__
++#define __HAVE_BUILTIN_BSWAP16__
++#endif /* CONFIG_ARCH_USE_BUILTIN_BSWAP */
+\ No newline at end of file
+diff -Naur original-sm-t580-3.18.14/include/linux/cpufreq.h sm-t580-3.18.14/include/linux/cpufreq.h
+--- original-sm-t580-3.18.14/include/linux/cpufreq.h	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/include/linux/cpufreq.h	2025-08-28 15:01:22.551431581 +0200
+@@ -612,6 +612,10 @@
+  *                         CPUFREQ STATS                             *
+  *********************************************************************/
+ 
++#ifdef CONFIG_CPU_FREQ_STAT
+ void acct_update_power(struct task_struct *p, cputime_t cputime);
++#else
++static inline void acct_update_power(struct task_struct *p, cputime_t cputime) { }
++#endif
+ 
+ #endif /* _LINUX_CPUFREQ_H */
+diff -Naur original-sm-t580-3.18.14/include/linux/input/input.h sm-t580-3.18.14/include/linux/input/input.h
+--- original-sm-t580-3.18.14/include/linux/input/input.h	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/include/linux/input/input.h	2025-08-28 14:42:25.968907363 +0200
+@@ -75,6 +75,9 @@
+ 	_device_param_.time = _dt_param_._time_; \
+ 	_device_param_.hmp_boost = _dt_param_.hmp_boost; \
+ }
++#else
++#define SET_BOOSTER
++#define REMOVE_BOOSTER
+ #endif //______________________________________________________________________________
+ #define GET_BOOSTER_PARAM(_GENDER_, _HEAD_PARAM_, _TAIL_PARAM_) { \
+ 	int levels[][3] = { \
+@@ -110,10 +113,20 @@
+ 	GET_BOOSTER_PARAM(dt_gender, head_param, tail_param) \
+ 	memset(dt_gender->pBooster->param, 0x00, sizeof(struct t_input_booster_param)*2); \
+ 	if(head_param != NULL) { \
+-		PROPERTY_BOOSTER(dt_gender->pBooster->param[0], (*head_param), head_time) \
++		dt_gender->pBooster->param[0].cpu_freq = head_param->cpu_freq; \
++		dt_gender->pBooster->param[0].kfc_freq = head_param->kfc_freq; \
++		dt_gender->pBooster->param[0].mif_freq = head_param->mif_freq; \
++		dt_gender->pBooster->param[0].int_freq = head_param->int_freq; \
++		dt_gender->pBooster->param[0].time = head_param->head_time; \
++		dt_gender->pBooster->param[0].hmp_boost = head_param->hmp_boost; \
+ 	} \
+ 	if(tail_param != NULL) { \
+-		PROPERTY_BOOSTER(dt_gender->pBooster->param[1], (*tail_param), tail_time) \
++		dt_gender->pBooster->param[1].cpu_freq = tail_param->cpu_freq; \
++		dt_gender->pBooster->param[1].kfc_freq = tail_param->kfc_freq; \
++		dt_gender->pBooster->param[1].mif_freq = tail_param->mif_freq; \
++		dt_gender->pBooster->param[1].int_freq = tail_param->int_freq; \
++		dt_gender->pBooster->param[1].time = tail_param->tail_time; \
++		dt_gender->pBooster->param[1].hmp_boost = tail_param->hmp_boost; \
+ 	} \
+ }
+ 
+diff -Naur original-sm-t580-3.18.14/include/linux/input.h sm-t580-3.18.14/include/linux/input.h
+--- original-sm-t580-3.18.14/include/linux/input.h	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/include/linux/input.h	2025-08-28 14:14:03.053320633 +0200
+@@ -101,7 +101,9 @@
+ 	snprintf(input_log_buf, sizeof(input_log_buf), "%s %s", SECLOG, fmt);	\
+ 	dev_err(dev, input_log_buf, ## __VA_ARGS__);				\
+ })
++#ifndef input_raw_info
+ #define input_raw_info(mode, dev, fmt, ...) input_info(mode, dev, fmt, ## __VA_ARGS__)
++#endif
+ #define input_raw_data_clear() {}
+ #endif
+ 
+diff -Naur original-sm-t580-3.18.14/include/linux/sec_debug.h sm-t580-3.18.14/include/linux/sec_debug.h
+--- original-sm-t580-3.18.14/include/linux/sec_debug.h	2018-10-29 07:24:40.000000000 +0100
++++ sm-t580-3.18.14/include/linux/sec_debug.h	2025-08-28 14:58:56.394837485 +0200
+@@ -31,6 +31,7 @@
+ 
+ extern int  sec_debug_get_debug_level(void);
+ extern void sec_debug_disable_printk_process(void);
++extern void sec_debug_EMFILE_error_proc(unsigned long files_addr);
+ 
+ /* getlog support */
+ extern void sec_getlog_supply_kernel(void *klog_buf);
+@@ -44,6 +45,7 @@
+ 
+ #define sec_debug_get_debug_level()		(0)
+ #define sec_debug_disable_printk_process()	do { } while(0)
++#define sec_debug_EMFILE_error_proc(a)		do { } while(0)
+ 
+ #define sec_getlog_supply_kernel(a)		do { } while(0)
+ #define sec_getlog_supply_platform(a,b)		do { } while(0)
+diff -Naur original-sm-t580-3.18.14/kernel/sched/sched.h sm-t580-3.18.14/kernel/sched/sched.h
+--- original-sm-t580-3.18.14/kernel/sched/sched.h	2018-10-29 07:24:41.000000000 +0100
++++ sm-t580-3.18.14/kernel/sched/sched.h	2025-08-28 15:06:30.534112310 +0200
+@@ -1207,7 +1207,11 @@
+ }
+ #endif
+ 
++#ifdef CONFIG_SCHED_DEBUG
+ extern void sysrq_sched_debug_show(void);
++#else
++static inline void sysrq_sched_debug_show(void) { }
++#endif
+ extern void sched_init_granularity(void);
+ extern void update_max_interval(void);
+ 
+diff -Naur original-sm-t580-3.18.14/Makefile sm-t580-3.18.14/Makefile
+--- original-sm-t580-3.18.14/Makefile	2018-10-29 07:24:35.000000000 +0100
++++ sm-t580-3.18.14/Makefile	2025-08-28 14:00:38.899119072 +0200
+@@ -297,7 +297,7 @@
+ 
+ HOSTCC       = gcc
+ HOSTCXX      = g++
+-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89
++HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer -std=gnu89 -fcommon
+ HOSTCXXFLAGS = -O2
+ 
+ ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
+diff -Naur original-sm-t580-3.18.14/scripts/fips_crypto_utils.c sm-t580-3.18.14/scripts/fips_crypto_utils.c
+--- original-sm-t580-3.18.14/scripts/fips_crypto_utils.c	2018-10-29 07:24:41.000000000 +0100
++++ sm-t580-3.18.14/scripts/fips_crypto_utils.c	2025-08-29 11:11:55.559769853 +0200
+@@ -13,7 +13,12 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+- 
++#include <string.h>
++
++int update_crypto_hmac(const char *vmlinux_path, const char *hmac_path, unsigned long offset);
++int collect_crypto_bytes(const char *in_file, const char *section_name, unsigned long offset,
++			unsigned long size, const char *out_file);
++
+ int main (int argc, char **argv)
+ {
+ 	if (argc < 2)
+--- original-sm-t580-3.18.14/drivers/input/keyboard/gpio_keys.c	2018-10-29 07:24:37.000000000 +0100
++++ sm-t580-3.18.14/drivers/input/keyboard/gpio_keys.c	2025-08-29 18:38:28.439771290 +0200
+@@ -615,7 +615,7 @@
+ {
+ 	struct gpio_button_data *bdata =
+ 		container_of(work, struct gpio_button_data, work);
+-	int state = (gpio_get_value_cansleep(bdata->button->gpio) ? 1 : 0) ^ bdata->button->active_low;
++	int __maybe_unused state = (gpio_get_value_cansleep(bdata->button->gpio) ? 1 : 0) ^ bdata->button->active_low;
+ 
+ 	exynos_ss_check_crash_key(bdata->button->code, state);
+ 

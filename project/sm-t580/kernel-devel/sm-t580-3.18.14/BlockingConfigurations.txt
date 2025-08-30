@@ -1,0 +1,27 @@
+  1. CONFIG_TIMA=y → # CONFIG_TIMA is not set (line 433)
+    - Main TIMA (Trust Integrity Measurement Architecture) framework
+    - Samsung's hardware-based security system
+  2. CONFIG_TIMA_RKP=y → REMOVED (was around line 435)
+    - RKP (Real-time Kernel Protection)
+    - Samsung's kernel integrity protection via Trust Zone
+  3. CONFIG_TIMA_RKP_4G=y → REMOVED (was around line 436)
+    - RKP 4GB memory protection mode
+    - Hardware-specific memory isolation
+
+  4. CONFIG_SOC_EXYNOS7870=y -> Disabled apparently crashes qemu (need to be rechecked when I revert samsung SOC sources)
+      The module is dependency of the following modules, so they have been disabled as well
+    - CONFIG_PWRCAL
+    - CONFIG_PM_RUNTIME
+    - CONFIG_EXYNOS_CHIPID
+    - CONFIG_SAMSUNG_DMADEV
+    - CONFIG_PL330_DMA
+    The module depends on
+    - CONFIG_ARM64_EXYNOS_CPUIDLE
+    - CONFIG_ION_EXYNOS
+    - CONFIG_PINCTRL=y
+    - CONFIG_PINMUX=y
+    - CONFIG_PINCONF=y
+    - CONFIG_PINCTRL_EXYNOS=y
+    - CONFIG_PM_RUNTIME=y
+    - CONFIG_ARM_EXYNOS_MP_CPUFREQ
+    - CONFIG_EXYNOS_THERMAL_TMU

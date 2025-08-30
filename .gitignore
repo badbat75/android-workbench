@@ -1,0 +1,5 @@
+.claude
+.vscode
+vendor/*
+kernel/*
+out

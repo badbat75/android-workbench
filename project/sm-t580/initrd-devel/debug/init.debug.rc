@@ -1,0 +1,42 @@
+#!/bin/sh
+echo "=== SM-T580 Debug Environment ==="
+echo "Setting up environment..."
+
+# Create essential device nodes first
+mknod /dev/zero c 1 5 2>/dev/null
+
+mkdir /proc /sys /dev/block
+
+# Mount essential filesystems
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+#mount -t devtmpfs devtmpfs /dev
+
+mknod /dev/block/vda b 254 0 2>/dev/null
+mknod /dev/block/vda1 b 254 1 2>/dev/null
+mknod /dev/block/vda2 b 254 2 2>/dev/null
+mknod /dev/block/vda3 b 254 3 2>/dev/null
+
+mkdir /system /cache /data
+
+# Mount Android partitions in read-only mode
+echo "Mounting Android partitions (read-only)..."
+mount -t ext4 -o ro /dev/block/vda1 /system 2>/dev/null && echo "Mounted /system (ro)" || echo "Failed to mount /system"
+mount -t ext4 -o ro /dev/block/vda2 /cache 2>/dev/null && echo "Mounted /cache (ro)" || echo "Failed to mount /cache"
+mount -t ext4 -o ro /dev/block/vda3 /data 2>/dev/null && echo "Mounted /data (ro)" || echo "Failed to mount /data"
+
+echo "Mounted filesystems:"
+df -h
+
+echo
+echo "Debug shell ready. Available commands: ls, cat, mount, df, ps, etc."
+echo "Android partitions mounted read-only under /mnt/"
+echo
+
+# Show final status and start interactive shell
+echo "=== Debug Environment Ready ==="
+echo "Type 'exit' to reboot or use Ctrl+A then X to quit QEMU"
+export PS1="debug# "
+
+# Start interactive shell with proper I/O redirection
+exec /bin/sh

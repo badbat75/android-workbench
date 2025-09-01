@@ -14,7 +14,7 @@ Build and test system for custom Android ROMs. It can emulate ROM thorugh QEMU.
 ### Build Scripts
 - Kernel: `./scripts/build_kernel.sh`
 - Initrd: `./scripts/build_initrd.sh [all|qemu|debug]`
-- MMC disk: `./scripts/create_mmc_disk.sh`
+- MMC disk: `./scripts/prepare_disks.sh`
 
 ### QEMU Testing
 - Boot: `./scripts/qemu_run.sh [--recovery]`
@@ -25,3 +25,10 @@ Build and test system for custom Android ROMs. It can emulate ROM thorugh QEMU.
 - **Build artifacts:** `out/`
 - **Project files:** `PROJECT_HOME/{overrides,inits,bin}`
 - **Useful documentation:** `doc/`
+
+## Known Issues
+### Android 12 QEMU Boot Crash
+- **Issue**: `android.hardware.security.keymint-service` crashes with "Check failed: status == STATUS_OK" causing `apexd-failed` reboot
+- **Cause**: KeyMint service requires hardware TEE/HSM not available in QEMU emulation
+- **Attempts**: Service overrides in init.rc don't prevent APEX-loaded services from starting
+- **Status**: Unresolved - need vendor image modification or APEX service disable method

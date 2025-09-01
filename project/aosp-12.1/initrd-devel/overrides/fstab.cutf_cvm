@@ -1,0 +1,12 @@
+# Simple fstab for QEMU Android 12 without A/B slots
+# Physical partitions first - wait for devices to be created
+/dev/block/vda11 /data ext4 nodev,noatime,nosuid,errors=panic latemount,wait,check,formattable
+
+# Super partition containing logical volumes - use direct path first  
+/dev/block/vda10 /super emmc defaults wait,first_stage_mount
+/dev/block/vda12 /metadata emmc nodev,noatime,nosuid,errors=panic wait,formattable,first_stage_mount,check
+
+# Dynamic partitions (logical volumes in super partition)
+system /system ext4 noatime,ro,errors=panic wait,logical,first_stage_mount
+vendor /vendor ext4 noatime,ro,errors=panic wait,logical,first_stage_mount
+product /product ext4 noatime,ro,errors=panic wait,logical,first_stage_mount

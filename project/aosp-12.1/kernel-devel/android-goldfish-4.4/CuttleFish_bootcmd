@@ -1,0 +1,94 @@
+# QEMU System Configuration
+/usr/bin/qemu-system-aarch64 \
+    -name guest=cvd-1,debug-threads=on \
+    -uuid 699acfc4-c8c4-11e7-882b-5065f31dc101 \
+    -no-user-config \
+    -nodefaults \
+    -no-shutdown \
+    -msg timestamp=on \
+    \
+    # Machine & Architecture
+    -machine virt,gic-version=2,mte=on,usb=off,dump-guest-core=off \
+    \
+    # CPU Configuration
+    -cpu max \
+    -smp 2,cores=2,threads=1 \
+    \
+    # Memory Configuration
+    -m size=2048M,maxmem=2050M \
+    -overcommit mem-lock=off \
+    -device virtio-balloon-pci-non-transitional,id=balloon0 \
+    \
+    # Boot Configuration
+    -rtc base=utc \
+    -boot strict=on \
+    -bios /home/emiliano/git/AOSP/build/out/target/product/vsoc_arm64/bootloader.qemu \
+    \
+    # Monitoring & Control
+    -chardev socket,id=charmonitor,path=/home/emiliano/cuttlefish_runtime.1/internal/qemu_monitor.sock,server=on,wait=off \
+    -mon chardev=charmonitor,id=monitor,mode=control \
+    \
+    # Serial Console & Virtual Consoles
+    -chardev file,id=hvc0,path=/home/emiliano/cuttlefish_runtime.1/internal/kernel-log-pipe,append=on \
+    -device virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial0 \
+    -device virtconsole,bus=virtio-serial0.0,chardev=hvc0 \
+    -chardev pipe,id=serial0,path=/home/emiliano/cuttlefish_runtime.1/internal/console \
+    -serial chardev:serial0 \
+    -chardev null,id=hvc1 \
+    -device virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial1 \
+    -device virtconsole,bus=virtio-serial1.0,chardev=hvc1 \
+    -chardev file,id=hvc2,path=/home/emiliano/cuttlefish_runtime.1/internal/logcat-pipe,append=on \
+    -device virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial2 \
+    -device virtconsole,bus=virtio-serial2.0,chardev=hvc2 \
+    -chardev pipe,id=hvc3,path=/home/emiliano/cuttlefish_runtime.1/internal/keymaster_fifo_vm \
+    -device virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial3 \
+    -device virtconsole,bus=virtio-serial3.0,chardev=hvc3 \
+    -chardev pipe,id=hvc4,path=/home/emiliano/cuttlefish_runtime.1/internal/gatekeeper_fifo_vm \
+    -device virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial4 \
+    -device virtconsole,bus=virtio-serial4.0,chardev=hvc4 \
+    -chardev null,id=hvc5 \
+    -device virtio-serial-pci-non-transitional,max_ports=1,id=virtio-serial5 \
+    -device virtconsole,bus=virtio-serial5.0,chardev=hvc5 \
+    \
+    # Storage & Disk Devices
+    -drive file=/home/emiliano/cuttlefish_runtime.1/overlay.img,if=none,id=drive-virtio-disk0,aio=threads \
+    -device virtio-blk-pci-non-transitional,drive=drive-virtio-disk0,id=virtio-disk0,bootindex=1 \
+    -drive file=/home/emiliano/cuttlefish_runtime.1/persistent_composite.img,if=none,id=drive-virtio-disk1,aio=threads,format=raw \
+    -device virtio-blk-pci-non-transitional,drive=drive-virtio-disk1,id=virtio-disk1 \
+    -drive file=/home/emiliano/cuttlefish_runtime.1/sdcard.img,if=none,id=drive-virtio-disk2,aio=threads,format=raw \
+    -device virtio-blk-pci-non-transitional,drive=drive-virtio-disk2,id=virtio-disk2 \
+    \
+    # Display & Graphics
+    -display egl-headless \
+    -vnc :544 \
+    -device virtio-gpu-pci,id=gpu0 \
+    \
+    # Input Devices
+    -device virtio-mouse-pci \
+    -device virtio-keyboard-pci \
+    \
+    # Network Configuration
+    -netdev tap,id=hostnet0,ifname=cvd-mtap-01,script=no,downscript=no \
+    -device virtio-net-pci-non-transitional,netdev=hostnet0,id=net0 \
+    -netdev tap,id=hostnet1,ifname=cvd-etap-01,script=no,downscript=no \
+    -device virtio-net-pci-non-transitional,netdev=hostnet1,id=net1 \
+    -netdev tap,id=hostnet2,ifname=cvd-wtap-01,script=no,downscript=no \
+    -device virtio-net-pci-non-transitional,netdev=hostnet2,id=net2 \
+    \
+    # Audio Configuration
+    -audiodev pipewire,id=audio0 \
+    -device AC97,audiodev=audio0 \
+    \
+    # USB & Other Devices
+    -device qemu-xhci,id=xhci \
+    -object rng-random,id=objrng0,filename=/dev/urandom \
+    -device virtio-rng-pci-non-transitional,rng=objrng0,id=rng0,max-bytes=1024,period=2000 \
+    \
+        # Virtio VSOCK Communication
+        # vhost-vsock provides a socket-like communication channel between guest and host
+        # It creates AF_VSOCK sockets that work across the guest/host boundary without networking
+        # The guest-cid=3 assigns Context ID 3 to this guest for addressing VSOCK connections
+        # Host applications can connect to guest services via AF_VSOCK using (CID=3, port)
+        # Guest applications can connect to host services via AF_VSOCK using (CID=2, port)
+        # This is commonly used for secure, low-latency communication in virtualized environments
+    -device vhost-vsock-pci-non-transitional,guest-cid=3

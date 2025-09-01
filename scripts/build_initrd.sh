@@ -53,12 +53,38 @@ build_qemu_initrd() {
     
     # Inject QEMU-specific overrides if present
     if [ -d "$OVERRIDES_ROOT" ] && [ "$(ls -A "$OVERRIDES_ROOT" 2>/dev/null)" ]; then
-        echo "Injecting QEMU-specific overrides..."
-        cd "$OVERRIDES_ROOT" || exit 1
-        find . | cpio -o -H newc -A --owner=0:0 -F "$TEMP_INITRD"
+        echo "Injecting QEMU-specific overrides:"
+        echo "Temp initrd size before injection: $(stat -c%s "$TEMP_INITRD") bytes"
+        
+        # Create a temporary directory to extract and merge
+        TEMP_EXTRACT_DIR=$(mktemp -d -t initrd-extract.XXXXXX)
+        cd "$TEMP_EXTRACT_DIR" || exit 1
+        
+        # Extract vendor initrd
+        echo "Extracting vendor initrd..."
+        cpio -i < "$TEMP_INITRD" 2>/dev/null
+        
+        # Copy overrides
+        echo "Copying overrides..."
+        cp -r "$OVERRIDES_ROOT"/* . 2>/dev/null || true
+        
+        # Recreate the archive
+        echo "Recreating merged initrd..."
+        find . | cpio -o -H newc --owner=0:0 > "$TEMP_INITRD" -v
+        
+        cd - > /dev/null
+        rm -rf "$TEMP_EXTRACT_DIR"
+        
+        echo "Temp initrd size after injection: $(stat -c%s "$TEMP_INITRD") bytes"
+        echo "Verifying injection by listing temp initrd contents:"
+        cpio -t < "$TEMP_INITRD" | tail -10
     else
         echo "No overrides found in $OVERRIDES_ROOT, skipping injection..."
     fi
+    
+    echo "Final verification before compression:"
+    echo "Listing all files in temp initrd:"
+    cpio -t < "$TEMP_INITRD" | grep -E "(fstab|init.*.rc)" || echo "No fstab/default files found in temp initrd"
     
     echo "Compressing QEMU initrd..."
     

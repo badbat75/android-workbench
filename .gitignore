@@ -3,10 +3,3 @@
 vendor/*
 kernel/*
 out
-
-# Large patch and diff files
-*.patch
-full_diff.txt
-*_diff.txt
-project/*/phase_*/
-project/*/unified_analysis_*/

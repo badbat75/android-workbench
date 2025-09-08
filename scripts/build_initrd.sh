@@ -26,14 +26,21 @@ build_qemu_initrd() {
     # Create temporary file for initrd processing
     TEMP_INITRD=$(mktemp -t initrd-qemu-build.XXXXXX)
     
-    # Use vendor initrd from extracted binaries
-    local vendor_initrd="$OUT_KERNEL/vendor_binaries/initrd.img"
+    # Use vendor initrd from vendor directory
+    local vendor_initrd=""
     
-    # Check if vendor initrd exists
-    if [ ! -f "$vendor_initrd" ]; then
-        echo "Warning: Vendor initrd not found at $vendor_initrd, creating empty initrd..."
-        touch "$TEMP_INITRD"
+    # Check vendor directory
+    if [ -f "$VENDOR_HOME/initrd.img" ]; then
+        vendor_initrd="$VENDOR_HOME/initrd.img"
+        echo "Using vendor initrd from: $vendor_initrd"
     else
+        echo "Warning: Vendor initrd not found in $VENDOR_HOME/initrd.img, creating empty initrd..."
+        touch "$TEMP_INITRD"
+        vendor_initrd=""
+    fi
+    
+    # Process vendor initrd if found
+    if [ -n "$vendor_initrd" ]; then
         # Detect compression format and decompress vendor initrd
         echo "Detecting vendor initrd compression format..."
         if file "$vendor_initrd" | grep -q "gzip compressed"; then

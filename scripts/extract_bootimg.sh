@@ -6,7 +6,7 @@
 # Handle --list-bootimg parameter
 if [ "$1" = "--list-bootimg" ]; then
     echo "Available boot images in $VENDOR_IMAGE/:"
-    find "$VENDOR_IMAGE" -name "boot*.img" -type f 2>/dev/null | xargs -r basename -a | sort || echo "  No boot images found"
+    find "$VENDOR_IMAGE" -name "boot*.img" -type f -print0 2>/dev/null | xargs -0 -r basename -a | sort || echo "  No boot images found"
     exit 0
 fi
 
@@ -23,69 +23,60 @@ fi
 echo "Extracting kernel and initrd from $BOOT_IMAGE_NAME using unpack_bootimg..."
 
 # Create output directories
-mkdir -p "$OUT_KERNEL/vendor_binaries"
 mkdir -p "$OUT_FILESYSTEM/vendor_initrd"
 
-# Create temporary directory for extraction
-TEMP_BOOT_DIR=$(mktemp -d -t boot-extract.XXXXXX)
+# Setup AIK directory
+AIK_DIR="$HOME_ROOT/external_tools/aik"
 
-# Extract boot.img using unpack_bootimg
-echo "Unpacking boot image..."
-unpack_bootimg --boot_img "$BOOT_IMAGE_PATH" --out "$TEMP_BOOT_DIR"
+# Clean up any previous extraction in AIK
+echo "Cleaning up previous AIK extraction..."
+cd "$AIK_DIR" || exit 1
+./cleanup.sh > /dev/null 2>&1 || true
 
-# Copy extracted ramdisk to vendor_binaries
+# Extract boot.img using AIK unpackimg directly from source
+echo "Unpacking boot image using AIK..."
+./unpackimg.sh "$BOOT_IMAGE_PATH" > /dev/null 2>&1 || {
+    echo "Error: Failed to unpack boot image"
+    exit 1
+}
+
+# Copy extracted ramdisk to vendor directory
 echo "Copying extracted ramdisk..."
-cp "$TEMP_BOOT_DIR/ramdisk" "$OUT_KERNEL/vendor_binaries/initrd.img"
-
-# Copy extracted kernel to boot directory
-echo "Copying extracted kernel..."
-mkdir -p "$OUT_KERNEL/boot"
-KERNEL_EXTRACTED=false
-
-# Check if kernel Image already exists
-if [ -f "$OUT_KERNEL/boot/Image" ]; then
-    echo "Warning: Kernel Image already exists at $OUT_KERNEL/boot/Image"
-    read -p "Do you want to override it? (y/N): " -r
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Skipping kernel extraction."
-    else
-        cp "$TEMP_BOOT_DIR/kernel" "$OUT_KERNEL/boot/Image"
-        echo "Kernel Image overridden."
-        KERNEL_EXTRACTED=true
-    fi
+if [ -f "$AIK_DIR/split_img/boot.img-ramdisk.cpio.gz" ]; then
+    cp "$AIK_DIR/split_img/boot.img-ramdisk.cpio.gz" "$VENDOR_HOME/initrd.img"
+elif [ -f "$AIK_DIR/split_img/boot.img-ramdisk.cpio" ]; then
+    cp "$AIK_DIR/split_img/boot.img-ramdisk.cpio" "$VENDOR_HOME/initrd.img"
 else
-    cp "$TEMP_BOOT_DIR/kernel" "$OUT_KERNEL/boot/Image"
-    echo "Kernel Image extracted."
-    KERNEL_EXTRACTED=true
+    echo "Error: Could not find extracted ramdisk"
+    exit 1
 fi
+echo "Ramdisk copied to $VENDOR_HOME/initrd.img"
+
+# Copy extracted kernel to vendor directory
+echo "Copying extracted kernel to vendor directory..."
+mkdir -p "$VENDOR_HOME"
+cp "$AIK_DIR/split_img/boot.img-kernel" "$VENDOR_HOME/kernel.img"
+echo "Kernel copied to $VENDOR_HOME/kernel.img"
+
+# Return to original directory
+cd - > /dev/null
 
 echo "Extracting initrd contents..."
 
 # Remove existing contents to ensure clean extraction
-rm -rf "$OUT_FILESYSTEM/vendor_initrd"/*
+rm -rf "$OUT_FILESYSTEM/vendor_initrd"
+mkdir -p "$OUT_FILESYSTEM/vendor_initrd"
 
-# Extract initrd.img contents - detect compression format
-cd "$OUT_FILESYSTEM/vendor_initrd" || exit 1
-if file "$OUT_KERNEL/vendor_binaries/initrd.img" | grep -q "gzip compressed"; then
-    echo "Decompressing gzip compressed initrd..."
-    gunzip -c "$OUT_KERNEL/vendor_binaries/initrd.img" | cpio -idmv
-elif file "$OUT_KERNEL/vendor_binaries/initrd.img" | grep -q "LZ4 compressed"; then
-    echo "Decompressing LZ4 compressed initrd..."
-    lz4 -dc "$OUT_KERNEL/vendor_binaries/initrd.img" | cpio -idmv
-elif file "$OUT_KERNEL/vendor_binaries/initrd.img" | grep -q "cpio archive"; then
-    echo "Extracting uncompressed cpio archive..."
-    cpio -idmv < "$OUT_KERNEL/vendor_binaries/initrd.img"
+# Copy extracted ramdisk contents from AIK
+if [ -d "$AIK_DIR/ramdisk" ]; then
+    echo "Copying ramdisk contents from AIK..."
+    cp -a "$AIK_DIR/ramdisk/"* "$OUT_FILESYSTEM/vendor_initrd/" 2>/dev/null || true
 else
-    echo "Unknown compression format, trying as uncompressed cpio..."
-    cpio -idmv < "$OUT_KERNEL/vendor_binaries/initrd.img"
+    echo "Warning: No ramdisk directory found in AIK extraction"
 fi
-
-# Cleanup temporary directory
-rm -rf "$TEMP_BOOT_DIR"
 
 echo "Extraction complete."
-if [ "$KERNEL_EXTRACTED" = true ]; then
-    echo "  Kernel extracted to: $OUT_KERNEL/boot/Image"
-fi
-echo "  initrd.img extracted to: $OUT_KERNEL/vendor_binaries/initrd.img"
+echo "  AIK extraction data kept in: $AIK_DIR"
+echo "  Kernel extracted to: $VENDOR_HOME/kernel.img"
+echo "  initrd.img extracted to: $VENDOR_HOME/initrd.img"
 echo "  Contents extracted to: $OUT_FILESYSTEM/vendor_initrd"

@@ -13,7 +13,8 @@ if [ "${VOLUME_TYPE:-partition}" = "partition" ]; then
     # Use combined MMC disk with partitions
     MMC_DISK="$OUT_IMAGE/mmc_disk.img"
     DRIVE_ARGS="-drive index=0,id=drive-virtio-disk0,if=none,format=raw,file=$MMC_DISK"
-    DRIVE_ARGS+=" -device virtio-blk-pci-non-transitional,drive=drive-virtio-disk0,id=virtio0,bootindex=0,serial=MMC0"
+#    DRIVE_ARGS+=" -device virtio-blk-pci-non-transitional,drive=drive-virtio-disk0,id=virtio0,bootindex=0,serial=MMC0"
+    DRIVE_ARGS+=" -device virtio-blk-device,drive=drive-virtio-disk0,id=virtio0,bootindex=0,serial=MMC0"
 else
     # Use individual disk images as separate drives
     DRIVE_ARGS=""
@@ -22,7 +23,8 @@ else
         image_file="$OUT_IMAGE/${basename}.img"
         if [ -f "$image_file" ]; then
             DRIVE_ARGS="$DRIVE_ARGS -drive index=$drive_index,id=drive-virtio-disk$drive_index,if=none,format=raw,file=$image_file,aio=threads"
-            DRIVE_ARGS+=" -device virtio-blk-pci-non-transitional,drive=drive-virtio-disk$drive_index,id=virtio$drive_index,bootindex=$drive_index,serial=${basename^^}"
+#            DRIVE_ARGS+=" -device virtio-blk-pci-non-transitional,drive=drive-virtio-disk$drive_index,id=virtio$drive_index,bootindex=$drive_index,serial=${basename^^}"
+            DRIVE_ARGS+=" -device virtio-blk-device,drive=drive-virtio-disk$drive_index,id=virtio$drive_index,bootindex=$drive_index,serial=${basename^^}"
             ((drive_index++))
         fi
     done
@@ -60,8 +62,8 @@ function run_qemu {
     qemu-system-aarch64 \
         -uuid 699acfc4-c8c4-11e7-882b-5065f31dc101 \
         -name guest=cvd-1,debug-threads=on \
-        -machine virt,gic-version=2,mte=on,usb=off,dump-guest-core=off  \
-        -cpu max \
+        -machine virt,gic-version=2,usb=off,dump-guest-core=off  \
+        -cpu "$CPU" \
         -smp 4,cores=4,threads=1 \
         -m "$MEMORY" \
         -overcommit mem-lock=off \
@@ -93,5 +95,6 @@ function run_qemu {
 run_qemu
 
 #        -bios /home/emiliano/git/AOSP/build/out/target/product/vsoc_arm64_only/bootloader.qemu \
-#        -cpu "$CPU" \
+#                -machine virt,gic-version=2,mte=on,usb=off,dump-guest-core=off  \
+
 

@@ -3,3 +3,4 @@
 vendor/*
 kernel/*
 out
+external_tools/aik

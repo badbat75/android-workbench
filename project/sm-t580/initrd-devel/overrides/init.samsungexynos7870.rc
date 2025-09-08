@@ -1,0 +1,60 @@
+# Samsung Exynos 7870 specific init
+
+on early-init
+    # Enable maximum debugging output very early
+    write /proc/sys/kernel/printk "7 4 1 7"
+    
+    mount proc proc /proc
+    mount sysfs sysfs /sys
+    
+    # Create virtio block devices for QEMU
+    mknod /dev/vda b 253 0
+    mknod /dev/vda1 b 253 1
+    mknod /dev/vda2 b 253 2
+    mknod /dev/vda3 b 253 3
+    mknod /dev/vda4 b 253 4
+    
+    # Mount system partition very early
+    mkdir /system 0755 root root
+    mount ext4 /dev/vda1 /system ro,barrier=1,errors=panic
+    
+
+on init
+    # Set permissions for /dev nodes
+    chmod 0664 /dev/mali0
+
+on fs
+    # Create block device directory and platform structure
+    mkdir /dev/block 0755 root root
+    mkdir /dev/block/platform 0755 root root
+    mkdir /dev/block/platform/13540000.dwmmc0 0755 root root  
+    mkdir /dev/block/platform/13540000.dwmmc0/by-name 0755 root root
+    symlink /dev/vda1 /dev/block/platform/13540000.dwmmc0/by-name/SYSTEM
+    symlink /dev/vda2 /dev/block/platform/13540000.dwmmc0/by-name/CACHE
+    symlink /dev/vda3 /dev/block/platform/13540000.dwmmc0/by-name/USERDATA
+    symlink /dev/vda4 /dev/block/platform/13540000.dwmmc0/by-name/HIDDEN
+    
+    # Mount partitions early
+    mount_all /fstab.samsungexynos7870 --early
+    
+on early-boot
+    # Start essential services early
+    start logd
+
+on late-fs
+    # Mount remaining partitions
+    mount_all /fstab.samsungexynos7870 --late
+
+on post-fs-data
+    # Create directories for Samsung-specific services
+    mkdir /data/vendor/wifi 0771 wifi wifi
+    mkdir /data/vendor/wifi/wpa 0770 wifi wifi
+    mkdir /data/vendor/wifi/wpa/sockets 0770 wifi wifi
+
+on boot
+    # Set permissions for hardware devices
+    chown system system /sys/class/backlight/panel/brightness
+    chmod 0664 /sys/class/backlight/panel/brightness
+
+    # WiFi
+    setprop wifi.interface wlan0

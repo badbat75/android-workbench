@@ -1,0 +1,12 @@
+--- a/arch/arm64/kernel/module.c
++++ b/arch/arm64/kernel/module.c
+@@ -388,3 +388,9 @@ int module_finalize(const Elf_Ehdr *hdr,
+ 
+ 	return 0;
+ }
++
++/* Called when module init sections are being freed */
++void module_arch_freeing_init(struct module *mod)
++{
++	/* ARM64 doesn't need special handling when freeing module init sections */
++}

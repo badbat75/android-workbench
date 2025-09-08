@@ -1,0 +1,11 @@
+CONFIG_VT=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_VT_CONSOLE=y
+
+CONFIG_FONTS=y
+CONFIG_FONT_8x16=y     # Large terminal font
+CONFIG_FONT_10x18=y
+CONFIG_FONT_SUN12x22=y
+
+CONFIG_CMDLINE="console=tty0 fbcon=font:SUN12x22 vt.global_cursor_default=0 earlyprintk"
+CONFIG_CMDLINE_EXTEND=y

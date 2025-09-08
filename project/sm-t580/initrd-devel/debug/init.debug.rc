@@ -12,18 +12,31 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 #mount -t devtmpfs devtmpfs /dev
 
-mknod /dev/block/vda b 254 0 2>/dev/null
-mknod /dev/block/vda1 b 254 1 2>/dev/null
-mknod /dev/block/vda2 b 254 2 2>/dev/null
-mknod /dev/block/vda3 b 254 3 2>/dev/null
+mknod /dev/block/vda b 253 0 2>/dev/null
+mknod /dev/block/vda1 b 253 1 2>/dev/null
+mknod /dev/block/vda2 b 253 2 2>/dev/null
+mknod /dev/block/vda3 b 253 3 2>/dev/null
+mknod /dev/block/vda4 b 253 4 2>/dev/null
+
+# Create platform-style block device symlinks for compatibility
+mkdir /dev/block/platform 0755 root root
+mkdir /dev/block/platform/13540000.dwmmc0 0755 root root  
+mkdir /dev/block/platform/13540000.dwmmc0/by-name 0755 root root
+ln -vs /dev/block/vda1 /dev/block/platform/13540000.dwmmc0/by-name/SYSTEM
+ln -vs /dev/block/vda2 /dev/block/platform/13540000.dwmmc0/by-name/CACHE
+ln -vs /dev/block/vda3 /dev/block/platform/13540000.dwmmc0/by-name/USERDATA
+ln -vs /dev/block/vda4 /dev/block/platform/13540000.dwmmc0/by-name/HIDDEN
+
+#ln -vs /dev/block/vda5 /dev/block/platform/13540000.dwmmc0/by-name/PERSDATA
+#ln -vs /dev/block/vda6 /dev/block/platform/13540000.dwmmc0/by-name/CPEFS
 
 mkdir /system /cache /data
 
 # Mount Android partitions in read-only mode
 echo "Mounting Android partitions (read-only)..."
-mount -t ext4 -o ro /dev/block/vda1 /system 2>/dev/null && echo "Mounted /system (ro)" || echo "Failed to mount /system"
-mount -t ext4 -o ro /dev/block/vda2 /cache 2>/dev/null && echo "Mounted /cache (ro)" || echo "Failed to mount /cache"
-mount -t ext4 -o ro /dev/block/vda3 /data 2>/dev/null && echo "Mounted /data (ro)" || echo "Failed to mount /data"
+mount -t ext4 -o ro /dev/block/platform/13540000.dwmmc0/by-name/SYSTEM /system 2>/dev/null && echo "Mounted /system (ro)" || echo "Failed to mount /system"
+mount -t ext4 -o ro /dev/block/platform/13540000.dwmmc0/by-name/CACHE /cache 2>/dev/null && echo "Mounted /cache (ro)" || echo "Failed to mount /cache"
+mount -t ext4 -o ro /dev/block/platform/13540000.dwmmc0/by-name/DATA /data 2>/dev/null && echo "Mounted /data (ro)" || echo "Failed to mount /data"
 
 echo "Mounted filesystems:"
 df -h
